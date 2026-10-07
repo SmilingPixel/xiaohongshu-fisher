@@ -4,6 +4,7 @@ import type { FeedItem } from './models/content';
 import { SourceError } from './models/source-error';
 import { BrowserSession } from './session/browser-session';
 import { XiaohongshuPageSource } from './sources/xiaohongshu-page-source';
+import { NoteReader } from './webview/note-reader';
 
 const COMMAND_PREFIX = 'xiaohongshu-fisher.';
 type ViewKey = 'homeFeed' | 'exploreFeed' | 'searchResults';
@@ -90,12 +91,12 @@ function getTrustedNoteUrl(value: unknown): vscode.Uri | undefined {
 	}
 
 	try {
-		const uri = vscode.Uri.parse(candidate);
-		const hostname = uri.authority.toLowerCase().split(':')[0];
-		if (uri.scheme !== 'https' || !(hostname === 'xiaohongshu.com' || hostname.endsWith('.xiaohongshu.com'))) {
+		const url = new URL(candidate);
+		if (url.protocol !== 'https:' || url.username || url.password ||
+			!(url.hostname === 'xiaohongshu.com' || url.hostname.endsWith('.xiaohongshu.com'))) {
 			return undefined;
 		}
-		return uri;
+		return vscode.Uri.parse(url.toString());
 	} catch {
 		return undefined;
 	}
@@ -105,13 +106,14 @@ export function activate(context: vscode.ExtensionContext): void {
 	const session = new BrowserSession(context.globalStorageUri);
 	const source = new XiaohongshuPageSource(session);
 	const application = new ContentApplicationService(source);
+	const reader = new NoteReader(application);
 	const providers: Record<ViewKey, StatusTreeProvider> = {
 		homeFeed: new StatusTreeProvider(`${COMMAND_PREFIX}refreshHomeFeed`),
 		exploreFeed: new StatusTreeProvider(`${COMMAND_PREFIX}refreshExploreFeed`),
 		searchResults: new StatusTreeProvider(`${COMMAND_PREFIX}searchNotes`),
 	};
 
-	context.subscriptions.push(session, { dispose: () => application.dispose() }, ...Object.values(providers));
+	context.subscriptions.push(session, reader, { dispose: () => application.dispose() }, ...Object.values(providers));
 	context.subscriptions.push({ dispose: () => { void source.dispose(); } });
 	context.subscriptions.push(
 		vscode.window.createTreeView('xiaohongshuFisher.homeFeed', { treeDataProvider: providers.homeFeed }),
@@ -154,12 +156,20 @@ export function activate(context: vscode.ExtensionContext): void {
 		if (selectedView) {return application.loadMore(selectedView.key);}
 	});
 	registerCommand(context, 'openNote', async (value: unknown) => {
+		if (typeof value === 'object' && value !== null && 'id' in value && 'title' in value && 'noteUrl' in value) {
+			const candidate = value as Partial<FeedItem>;
+			if (typeof candidate.id === 'string' && typeof candidate.title === 'string' &&
+				typeof candidate.noteUrl === 'string' && candidate.noteUrl.length < 4096) {
+				await reader.open(candidate as FeedItem);
+				return;
+			}
+		}
 		const uri = getTrustedNoteUrl(value);
 		if (uri) {
 			await vscode.env.openExternal(uri);
 			return;
 		}
-		void vscode.window.showInformationMessage('笔记阅读器将在后续阶段接入。');
+		void vscode.window.showWarningMessage('没有可读取的小红书笔记。');
 	});
 	registerCommand(context, 'openInBrowser', async (value: unknown) => {
 		const uri = getTrustedNoteUrl(value);
