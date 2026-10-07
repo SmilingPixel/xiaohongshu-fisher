@@ -1,15 +1,18 @@
 import * as vscode from 'vscode';
+import { ContentApplicationService, type FeedKey, type FeedState } from './application/content-service';
+import type { FeedItem } from './models/content';
+import { SourceError } from './models/source-error';
+import { BrowserSession } from './session/browser-session';
+import { XiaohongshuPageSource } from './sources/xiaohongshu-page-source';
 
 const COMMAND_PREFIX = 'xiaohongshu-fisher.';
-const HOME_URL = 'https://www.xiaohongshu.com/';
-
 type ViewKey = 'homeFeed' | 'exploreFeed' | 'searchResults';
 
 class StatusTreeItem extends vscode.TreeItem {
-	constructor(label: string, description: string, command?: vscode.Command) {
+	constructor(label: string, description: string, command?: vscode.Command, contextValue = 'status') {
 		super(label, vscode.TreeItemCollapsibleState.None);
 		this.description = description;
-		this.contextValue = 'status';
+		this.contextValue = contextValue;
 		this.command = command;
 	}
 }
@@ -17,8 +20,7 @@ class StatusTreeItem extends vscode.TreeItem {
 class StatusTreeProvider implements vscode.TreeDataProvider<StatusTreeItem>, vscode.Disposable {
 	private readonly changeEmitter = new vscode.EventEmitter<StatusTreeItem | undefined | null | void>();
 	readonly onDidChangeTreeData = this.changeEmitter.event;
-	private status = '内容读取将在后续阶段接入';
-	private detail = '当前不会发起平台请求';
+	private state: Readonly<FeedState> = { items: [], isLoading: false, isLoadingMore: false };
 
 	constructor(private readonly refreshCommand: string) {}
 
@@ -27,12 +29,23 @@ class StatusTreeProvider implements vscode.TreeDataProvider<StatusTreeItem>, vsc
 	}
 
 	getChildren(): StatusTreeItem[] {
-		return [new StatusTreeItem(this.status, this.detail, { command: this.refreshCommand, title: '刷新' })];
+		if (this.state.items.length > 0) {
+			const items = this.state.items.map(item => this.toTreeItem(item));
+			if (this.state.isLoadingMore) {items.push(new StatusTreeItem('正在加载下一页…', '', undefined));}
+			if (this.state.nextCursor) {
+				items.push(new StatusTreeItem('加载更多', '', { command: `${COMMAND_PREFIX}loadMore`, title: '加载更多' }, 'loadMore'));
+			}
+			return items;
+		}
+		if (this.state.isLoading) {return [new StatusTreeItem('正在加载…', '', undefined)];}
+		if (this.state.error) {
+			return [new StatusTreeItem(this.state.error.message, '重试以重新加载', { command: this.refreshCommand, title: '重试' })];
+		}
+		return [new StatusTreeItem('尚无内容', '选择刷新或搜索开始阅读', { command: this.refreshCommand, title: '刷新' })];
 	}
 
-	setStatus(status: string, detail: string): void {
-		this.status = status;
-		this.detail = detail;
+	setState(state: Readonly<FeedState>): void {
+		this.state = state;
 		this.changeEmitter.fire(undefined);
 	}
 
@@ -42,6 +55,19 @@ class StatusTreeProvider implements vscode.TreeDataProvider<StatusTreeItem>, vsc
 
 	dispose(): void {
 		this.changeEmitter.dispose();
+	}
+
+	private toTreeItem(item: FeedItem): StatusTreeItem {
+		const metadata = [item.author?.name, item.mediaType === 'unknown' ? undefined : item.mediaType]
+			.filter(Boolean)
+			.join(' · ');
+		const treeItem = new StatusTreeItem(item.title, metadata, {
+			command: `${COMMAND_PREFIX}openNote`,
+			title: '打开笔记',
+			arguments: [item],
+		}, 'note');
+		treeItem.tooltip = item.excerpt ?? item.title;
+		return treeItem;
 	}
 }
 
@@ -76,26 +102,32 @@ function getTrustedNoteUrl(value: unknown): vscode.Uri | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+	const session = new BrowserSession(context.globalStorageUri);
+	const source = new XiaohongshuPageSource(session);
+	const application = new ContentApplicationService(source);
 	const providers: Record<ViewKey, StatusTreeProvider> = {
 		homeFeed: new StatusTreeProvider(`${COMMAND_PREFIX}refreshHomeFeed`),
 		exploreFeed: new StatusTreeProvider(`${COMMAND_PREFIX}refreshExploreFeed`),
 		searchResults: new StatusTreeProvider(`${COMMAND_PREFIX}searchNotes`),
 	};
 
-	context.subscriptions.push(...Object.values(providers));
+	context.subscriptions.push(session, { dispose: () => application.dispose() }, ...Object.values(providers));
+	context.subscriptions.push({ dispose: () => { void source.dispose(); } });
 	context.subscriptions.push(
 		vscode.window.createTreeView('xiaohongshuFisher.homeFeed', { treeDataProvider: providers.homeFeed }),
 		vscode.window.createTreeView('xiaohongshuFisher.exploreFeed', { treeDataProvider: providers.exploreFeed }),
 		vscode.window.createTreeView('xiaohongshuFisher.searchResults', { treeDataProvider: providers.searchResults })
 	);
+	context.subscriptions.push(application.subscribe((key, state) => {
+		const viewKey: ViewKey = key === 'home' ? 'homeFeed' : key === 'explore' ? 'exploreFeed' : 'searchResults';
+		providers[viewKey].setState(state);
+	}));
 
 	registerCommand(context, 'refreshHomeFeed', () => {
-		providers.homeFeed.refresh();
-		void vscode.window.showInformationMessage('推荐内容源将在后续阶段接入。');
+		return application.refreshHomeFeed();
 	});
 	registerCommand(context, 'refreshExploreFeed', () => {
-		providers.exploreFeed.refresh();
-		void vscode.window.showInformationMessage('发现内容源将在后续阶段接入。');
+		return application.refreshExploreFeed();
 	});
 	registerCommand(context, 'searchNotes', async () => {
 		const query = await vscode.window.showInputBox({ prompt: '搜索小红书笔记', ignoreFocusOut: true });
@@ -106,10 +138,20 @@ export function activate(context: vscode.ExtensionContext): void {
 			void vscode.window.showWarningMessage('请输入搜索关键词。');
 			return;
 		}
-		providers.searchResults.setStatus('搜索内容源尚未接入', `关键词：${query.trim()}`);
+		return application.searchNotes(query);
 	});
-	registerCommand(context, 'loadMore', () => {
-		void vscode.window.showInformationMessage('分页读取将在内容源接入后可用。');
+	registerCommand(context, 'loadMore', async (...args: unknown[]) => {
+		const key = args[0] as FeedKey | undefined;
+		const selectedView = key ?? await vscode.window.showQuickPick(
+			[
+				{ label: '推荐', key: 'home' as const },
+				{ label: '发现', key: 'explore' as const },
+				{ label: '搜索结果', key: 'search' as const },
+			],
+			{ placeHolder: '选择要继续加载的列表' }
+		);
+		if (typeof selectedView === 'string') {return application.loadMore(selectedView);}
+		if (selectedView) {return application.loadMore(selectedView.key);}
 	});
 	registerCommand(context, 'openNote', async (value: unknown) => {
 		const uri = getTrustedNoteUrl(value);
@@ -128,9 +170,33 @@ export function activate(context: vscode.ExtensionContext): void {
 		void vscode.window.showWarningMessage('没有可打开的小红书笔记链接。');
 	});
 	registerCommand(context, 'openLogin', async () => {
-		await vscode.env.openExternal(vscode.Uri.parse(HOME_URL));
+		try {
+			await source.openLogin();
+		} catch (error) {
+			const sourceError = error instanceof SourceError ? error : undefined;
+			if (sourceError?.code === 'browser-missing') {
+				void vscode.window.showErrorMessage(sourceError.message, '安装浏览器运行时').then(selection => {
+					if (selection) {void vscode.commands.executeCommand(`${COMMAND_PREFIX}installBrowserRuntime`);}
+				});
+				return;
+			}
+			void vscode.window.showErrorMessage('无法打开独立的小红书浏览器窗口。');
+		}
 	});
-	registerCommand(context, 'clearSession', () => {
-		void vscode.window.showInformationMessage('当前尚未创建插件专属会话。');
+	registerCommand(context, 'installBrowserRuntime', () => {
+		const terminal = vscode.window.createTerminal({ name: 'Xiaohongshu Fisher: Install Browser' });
+		terminal.show();
+		terminal.sendText('pnpm exec playwright install chromium');
+	});
+	registerCommand(context, 'clearSession', async () => {
+		const answer = await vscode.window.showWarningMessage(
+			'清除小红书 Fisher 保存的独立浏览器会话？',
+			{ modal: true },
+			'清除会话'
+		);
+		if (answer === '清除会话') {
+			await session.clear();
+			void vscode.window.showInformationMessage('独立浏览器会话已清除。');
+		}
 	});
 }

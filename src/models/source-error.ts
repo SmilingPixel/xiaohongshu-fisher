@@ -2,6 +2,7 @@ export type SourceErrorCode =
 	| 'invalid-query'
 	| 'unauthenticated'
 	| 'access-restricted'
+	| 'browser-missing'
 	| 'network'
 	| 'parse-failure'
 	| 'not-found'

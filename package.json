@@ -52,6 +52,11 @@
         "icon": "$(sign-in)"
       },
       {
+        "command": "xiaohongshu-fisher.installBrowserRuntime",
+        "title": "安装 Playwright Chromium",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "xiaohongshu-fisher.clearSession",
         "title": "清除小红书会话",
         "icon": "$(trash)"
@@ -112,17 +117,20 @@
     "test:unit": "node --test out/test/unit/*.test.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.140.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
-    "typescript-eslint": "^8.61.1",
+    "@types/vscode": "^1.140.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
     "eslint": "^10.5.0",
     "typescript": "^6.0.3",
-    "@vscode/test-cli": "^0.0.15",
-    "@vscode/test-electron": "^3.0.0"
+    "typescript-eslint": "^8.61.1"
   },
   "overrides": {
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
   }
 }
