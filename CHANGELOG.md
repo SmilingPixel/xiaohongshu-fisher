@@ -1,9 +1,15 @@
 # Change Log
 
-All notable changes to the "xiaohongshu-fisher" extension will be documented in this file.
+## [0.0.1] - Unreleased
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+### Added
 
-## [Unreleased]
+- 推荐、发现和搜索结果侧栏视图，支持刷新与分页。
+- Playwright 独立可见浏览器会话，由用户在官方网页中登录。
+- VS Code 内笔记阅读页，以及在系统浏览器打开原笔记的入口。
+- 用户可控的浏览器会话清理命令。
 
-- Initial release
+### Notes
+
+- 尚未完成真实账号下的网页端到端验证；网页栏目和字段读取可能随平台变化。
+- VS Code Web、Remote SSH 和容器环境尚未验证。

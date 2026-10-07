@@ -1,71 +1,50 @@
-# xiaohongshu-fisher README
+# Xiaohongshu Fisher
 
-This is the README for your extension "xiaohongshu-fisher". After writing up a brief description, we recommend including the following sections.
+在 VS Code 中浏览和阅读小红书笔记。当前版本提供推荐、发现、搜索结果视图，以及笔记阅读页和系统浏览器入口。
 
-## Features
+## 使用
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+1. 在 Activity Bar 打开“小红书”。
+2. 首次使用时运行命令面板中的“打开小红书登录页”，在插件启动的独立可见浏览器窗口中自行登录。
+3. 返回 VS Code，在“推荐”或“发现”视图标题栏选择刷新；在“搜索结果”视图运行“小红书: 搜索笔记”。
+4. 选择笔记打开内置阅读页。阅读页也提供“在浏览器中打开”入口。
 
-For example if there is an image subfolder under your extension project workspace:
+若缺少 Playwright Chromium，运行命令面板中的“安装 Playwright Chromium”。该命令会在 VS Code 终端中启动安装流程，不会在扩展激活时静默下载浏览器。安装完成后重新打开登录页或刷新列表。
 
-\!\[feature X\]\(images/feature-x.png\)
+## 数据与隐私
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+- 登录只在小红书官方网页中由用户自行完成；扩展不收集账号密码或验证码。
+- 登录会话保存在 VS Code 扩展全局存储目录下的独立浏览器 profile，不读取系统默认浏览器数据，也不写入工作区设置。
+- 使用“小红书: 清除小红书会话”关闭浏览器并删除插件保存的 profile。卸载扩展前建议先运行此命令。
+- 笔记正文只用于当前阅读页，不保存到工作区或持久缓存。扩展只执行用户触发的只读浏览、搜索和详情读取。
+- 页面内容来自小红书网页，网页结构和可读栏目可能变化。遇到登录验证、访问限制或解析失败时，请在官方页面处理或稍后重试；扩展不会自动处理验证或规避访问限制。
 
-## Requirements
+## 运行要求与限制
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- 需要桌面版 VS Code 和 Playwright Chromium。当前未验证 VS Code Web、Remote SSH 或容器环境。
+- 本版本尚未完成真实小红书账号下的端到端验证。推荐、发现、搜索和详情能否读取取决于当前网页行为、登录状态和账号可见内容。
+- “发现”视图的网页数据映射仍需真实浏览器验证；若平台页面返回的数据结构变化，相关栏目可能暂不可用。
+- 本扩展为社区工具，不代表小红书官方产品。请遵守平台规则并自行判断使用方式。
 
-## Extension Settings
+## 命令
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+| 命令 | 作用 |
+| --- | --- |
+| 小红书: 刷新推荐 | 重新读取推荐列表 |
+| 小红书: 刷新发现 | 重新读取发现列表 |
+| 小红书: 搜索笔记 | 输入关键词搜索 |
+| 小红书: 加载更多 | 继续读取当前列表 |
+| 小红书: 打开小红书登录页 | 打开独立的官方网页会话 |
+| 小红书: 安装 Playwright Chromium | 在终端安装浏览器运行时 |
+| 小红书: 清除小红书会话 | 删除扩展专属浏览器 profile |
 
-For example:
+## 开发
 
-This extension contributes the following settings:
+```sh
+pnpm install
+pnpm run compile
+pnpm run lint
+pnpm run test:unit
+```
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+完整 `pnpm test` 还需要可启动 VS Code Electron 的图形环境。

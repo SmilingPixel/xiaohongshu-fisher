@@ -1,8 +1,13 @@
 {
   "name": "xiaohongshu-fisher",
+  "publisher": "SmilingPixel",
   "displayName": "Xiaohongshu Fisher",
   "description": "Browse and read Xiaohongshu notes from Visual Studio Code.",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SmilingPixel/xiaohongshu-fisher.git"
+  },
   "engines": {
     "vscode": "^1.140.0"
   },

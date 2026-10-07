@@ -194,7 +194,10 @@ export function activate(context: vscode.ExtensionContext): void {
 		}
 	});
 	registerCommand(context, 'installBrowserRuntime', () => {
-		const terminal = vscode.window.createTerminal({ name: 'Xiaohongshu Fisher: Install Browser' });
+		const terminal = vscode.window.createTerminal({
+			name: 'Xiaohongshu Fisher: Install Browser',
+			cwd: context.extensionUri.fsPath,
+		});
 		terminal.show();
 		terminal.sendText('pnpm exec playwright install chromium');
 	});
