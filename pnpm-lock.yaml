@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      playwright:
+        specifier: ^1.63.0
+        version: 1.63.0
     devDependencies:
       '@types/mocha':
         specifier: ^10.0.10
@@ -708,6 +712,16 @@ packages:
   picomatch@4.0.7:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
+
+  playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.63.0:
+    resolution: {integrity: sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -1636,6 +1650,12 @@ snapshots:
   picocolors@1.1.1: {}
 
   picomatch@4.0.7: {}
+
+  playwright-core@1.63.0: {}
+
+  playwright@1.63.0:
+    dependencies:
+      playwright-core: 1.63.0
 
   prelude-ls@1.2.1: {}
 

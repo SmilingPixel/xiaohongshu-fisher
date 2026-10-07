@@ -1,23 +1,116 @@
 {
   "name": "xiaohongshu-fisher",
+  "publisher": "SmilingPixel",
   "displayName": "Xiaohongshu Fisher",
-  "description": "",
+  "description": "Browse and read Xiaohongshu notes from Visual Studio Code.",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SmilingPixel/xiaohongshu-fisher.git"
+  },
   "engines": {
     "vscode": "^1.140.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:xiaohongshuFisher.homeFeed",
+    "onView:xiaohongshuFisher.exploreFeed",
+    "onView:xiaohongshuFisher.searchResults"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "xiaohongshu-fisher.helloWorld",
-        "title": "Hello World"
+        "command": "xiaohongshu-fisher.refreshHomeFeed",
+        "title": "刷新推荐",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "xiaohongshu-fisher.refreshExploreFeed",
+        "title": "刷新发现",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "xiaohongshu-fisher.searchNotes",
+        "title": "搜索小红书笔记",
+        "icon": "$(search)"
+      },
+      {
+        "command": "xiaohongshu-fisher.loadMore",
+        "title": "加载更多",
+        "icon": "$(more)"
+      },
+      {
+        "command": "xiaohongshu-fisher.openNote",
+        "title": "打开笔记"
+      },
+      {
+        "command": "xiaohongshu-fisher.openInBrowser",
+        "title": "在浏览器中打开",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "xiaohongshu-fisher.openLogin",
+        "title": "打开小红书登录页",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "xiaohongshu-fisher.installBrowserRuntime",
+        "title": "安装 Playwright Chromium",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "xiaohongshu-fisher.clearSession",
+        "title": "清除小红书会话",
+        "icon": "$(trash)"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "xiaohongshuFisher",
+          "title": "小红书",
+          "icon": "resources/xiaohongshu.svg"
+        }
+      ]
+    },
+    "views": {
+      "xiaohongshuFisher": [
+        {
+          "id": "xiaohongshuFisher.homeFeed",
+          "name": "推荐"
+        },
+        {
+          "id": "xiaohongshuFisher.exploreFeed",
+          "name": "发现"
+        },
+        {
+          "id": "xiaohongshuFisher.searchResults",
+          "name": "搜索结果"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "xiaohongshu-fisher.refreshHomeFeed",
+          "when": "view == xiaohongshuFisher.homeFeed",
+          "group": "navigation"
+        },
+        {
+          "command": "xiaohongshu-fisher.refreshExploreFeed",
+          "when": "view == xiaohongshuFisher.exploreFeed",
+          "group": "navigation"
+        },
+        {
+          "command": "xiaohongshu-fisher.searchNotes",
+          "when": "view == xiaohongshuFisher.searchResults",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run compile",
@@ -25,20 +118,24 @@
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "pnpm run test:unit && vscode-test",
+    "test:unit": "node --test out/test/unit/*.test.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.140.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
-    "typescript-eslint": "^8.61.1",
+    "@types/vscode": "^1.140.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
     "eslint": "^10.5.0",
     "typescript": "^6.0.3",
-    "@vscode/test-cli": "^0.0.15",
-    "@vscode/test-electron": "^3.0.0"
+    "typescript-eslint": "^8.61.1"
   },
   "overrides": {
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
   }
 }
