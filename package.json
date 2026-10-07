@@ -108,7 +108,8 @@
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "pnpm run test:unit && vscode-test",
+    "test:unit": "node --test out/test/unit/*.test.js"
   },
   "devDependencies": {
     "@types/vscode": "^1.140.0",
