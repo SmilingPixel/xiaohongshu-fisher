@@ -9,6 +9,7 @@ const commandIds = [
 	'xiaohongshu-fisher.openNote',
 	'xiaohongshu-fisher.openInBrowser',
 	'xiaohongshu-fisher.openLogin',
+	'xiaohongshu-fisher.refreshLoginQr',
 	'xiaohongshu-fisher.installBrowserRuntime',
 	'xiaohongshu-fisher.clearSession',
 ];

@@ -77,6 +77,10 @@
         "icon": "$(sign-in)"
       },
       {
+        "command": "xiaohongshu-fisher.refreshLoginQr",
+        "title": "刷新小红书登录二维码"
+      },
+      {
         "command": "xiaohongshu-fisher.installBrowserRuntime",
         "title": "安装 Playwright Chromium",
         "icon": "$(cloud-download)"

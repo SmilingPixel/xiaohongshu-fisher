@@ -5,6 +5,7 @@ import { SourceError } from './models/source-error';
 import { BrowserSession } from './session/browser-session';
 import { normalizeBrowserMode } from './session/browser-mode';
 import { XiaohongshuPageSource } from './sources/xiaohongshu-page-source';
+import { LoginAssistant } from './webview/login-assistant';
 import { NoteReader } from './webview/note-reader';
 
 const COMMAND_PREFIX = 'xiaohongshu-fisher.';
@@ -110,6 +111,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	const session = new BrowserSession(context.globalStorageUri, configuredMode);
 	const source = new XiaohongshuPageSource(session);
 	const application = new ContentApplicationService(source);
+	const loginAssistant = new LoginAssistant(session);
 	const reader = new NoteReader(application);
 	const providers: Record<ViewKey, StatusTreeProvider> = {
 		homeFeed: new StatusTreeProvider(`${COMMAND_PREFIX}refreshHomeFeed`),
@@ -117,7 +119,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		searchResults: new StatusTreeProvider(`${COMMAND_PREFIX}searchNotes`),
 	};
 
-	context.subscriptions.push(session, reader, { dispose: () => application.dispose() }, ...Object.values(providers));
+	context.subscriptions.push(session, loginAssistant, reader, { dispose: () => application.dispose() }, ...Object.values(providers));
 	context.subscriptions.push({ dispose: () => { void source.dispose(); } });
 	context.subscriptions.push(
 		vscode.window.createTreeView('xiaohongshuFisher.homeFeed', { treeDataProvider: providers.homeFeed }),
@@ -185,6 +187,10 @@ export function activate(context: vscode.ExtensionContext): void {
 	});
 	registerCommand(context, 'openLogin', async () => {
 		try {
+			if (session.getMode() === 'headless') {
+				await loginAssistant.open();
+				return;
+			}
 			await source.openLogin();
 		} catch (error) {
 			const sourceError = error instanceof SourceError ? error : undefined;
@@ -196,6 +202,13 @@ export function activate(context: vscode.ExtensionContext): void {
 			}
 			void vscode.window.showErrorMessage(sourceError?.message ?? '无法打开独立的小红书浏览器。');
 		}
+	});
+	registerCommand(context, 'refreshLoginQr', () => {
+		if (session.getMode() !== 'headless') {
+			void vscode.window.showInformationMessage('当前使用可见浏览器，无头登录二维码仅适用于 headless 模式。');
+			return;
+		}
+		return loginAssistant.refreshQr();
 	});
 	registerCommand(context, 'installBrowserRuntime', () => {
 		const terminal = vscode.window.createTerminal({

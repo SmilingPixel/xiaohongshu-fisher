@@ -4,6 +4,8 @@ export type ResolvedBrowserMode = Exclude<BrowserMode, 'auto'>;
 export interface BrowserEnvironment {
 	readonly display?: string;
 	readonly waylandDisplay?: string;
+	readonly remote?: boolean;
+	readonly platform?: NodeJS.Platform;
 }
 
 export function isBrowserMode(value: unknown): value is BrowserMode {
@@ -16,7 +18,9 @@ export function normalizeBrowserMode(value: unknown): BrowserMode {
 
 export function resolveBrowserMode(mode: BrowserMode, environment: BrowserEnvironment): ResolvedBrowserMode {
 	if (mode !== 'auto') {return mode;}
-	return environment.display || environment.waylandDisplay ? 'visible' : 'headless';
+	if (environment.display || environment.waylandDisplay) {return 'visible';}
+	if (environment.remote) {return 'headless';}
+	return environment.platform === 'win32' || environment.platform === 'darwin' ? 'visible' : 'headless';
 }
 
 export function browserModeLabel(mode: ResolvedBrowserMode): string {
