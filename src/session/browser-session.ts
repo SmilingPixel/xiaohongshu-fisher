@@ -5,6 +5,7 @@ import type { BrowserContext, Page } from 'playwright';
 import { chromium } from 'playwright';
 import * as vscode from 'vscode';
 import { SourceError } from '../models/source-error';
+import { browserModeLabel, resolveBrowserMode, type BrowserMode, type ResolvedBrowserMode } from './browser-mode';
 
 const HOME_URL = 'https://www.xiaohongshu.com/';
 const PROFILE_DIRECTORY = 'browser-profile';
@@ -14,13 +15,22 @@ export class BrowserSession implements vscode.Disposable {
 	private opening?: Promise<BrowserContext>;
 	private loginPage?: Page;
 	private readonly profilePath: string;
+	private readonly mode: ResolvedBrowserMode;
 
-	constructor(storageUri: vscode.Uri) {
+	constructor(storageUri: vscode.Uri, configuredMode: BrowserMode = 'auto') {
 		this.profilePath = path.join(storageUri.fsPath, PROFILE_DIRECTORY);
+		this.mode = resolveBrowserMode(configuredMode, {
+			display: process.env.DISPLAY,
+			waylandDisplay: process.env.WAYLAND_DISPLAY,
+		});
 	}
 
 	static hasBrowserRuntime(): boolean {
 		return existsSync(chromium.executablePath());
+	}
+
+	getMode(): ResolvedBrowserMode {
+		return this.mode;
 	}
 
 	async openLogin(): Promise<void> {
@@ -71,9 +81,14 @@ export class BrowserSession implements vscode.Disposable {
 			throw new SourceError('browser-missing', '未安装 Playwright Chromium，请先运行“安装浏览器运行时”。', false);
 		}
 		try {
-			return await chromium.launchPersistentContext(this.profilePath, { headless: false });
-		} catch {
-			throw new SourceError('browser-missing', '无法启动独立浏览器，请检查桌面环境和浏览器安装状态。', false);
+			return await chromium.launchPersistentContext(this.profilePath, { headless: this.mode === 'headless' });
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : undefined;
+			const environmentHint = this.mode === 'visible'
+				? '请检查 DISPLAY/Wayland 桌面环境；无图形环境可将 browserMode 设置为 headless。'
+				: '请检查 Chromium 系统依赖和沙箱权限。';
+			const detail = reason?.toLowerCase().includes('display') ? '当前环境没有可用的图形显示。' : environmentHint;
+			throw new SourceError('browser-startup', `无法启动${browserModeLabel(this.mode)} Chromium。${detail}`, false);
 		}
 	}
 

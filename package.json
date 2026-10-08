@@ -21,6 +21,26 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Xiaohongshu Fisher",
+      "properties": {
+        "xiaohongshu-fisher.browserMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "visible",
+            "headless"
+          ],
+          "enumDescriptions": [
+            "有图形环境时使用可见浏览器，否则使用无头浏览器。",
+            "强制启动可见浏览器窗口。",
+            "强制使用无头浏览器，适合 Remote SSH、容器和无图形服务器。"
+          ],
+          "default": "auto",
+          "description": "选择小红书独立浏览器的启动模式。"
+        }
+      }
+    },
     "commands": [
       {
         "command": "xiaohongshu-fisher.refreshHomeFeed",

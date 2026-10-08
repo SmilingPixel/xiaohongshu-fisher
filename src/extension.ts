@@ -3,6 +3,7 @@ import { ContentApplicationService, type FeedKey, type FeedState } from './appli
 import type { FeedItem } from './models/content';
 import { SourceError } from './models/source-error';
 import { BrowserSession } from './session/browser-session';
+import { normalizeBrowserMode } from './session/browser-mode';
 import { XiaohongshuPageSource } from './sources/xiaohongshu-page-source';
 import { NoteReader } from './webview/note-reader';
 
@@ -103,7 +104,10 @@ function getTrustedNoteUrl(value: unknown): vscode.Uri | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-	const session = new BrowserSession(context.globalStorageUri);
+	const configuredMode = normalizeBrowserMode(
+		vscode.workspace.getConfiguration('xiaohongshu-fisher').get<unknown>('browserMode')
+	);
+	const session = new BrowserSession(context.globalStorageUri, configuredMode);
 	const source = new XiaohongshuPageSource(session);
 	const application = new ContentApplicationService(source);
 	const reader = new NoteReader(application);
@@ -190,7 +194,7 @@ export function activate(context: vscode.ExtensionContext): void {
 				});
 				return;
 			}
-			void vscode.window.showErrorMessage('无法打开独立的小红书浏览器窗口。');
+			void vscode.window.showErrorMessage(sourceError?.message ?? '无法打开独立的小红书浏览器。');
 		}
 	});
 	registerCommand(context, 'installBrowserRuntime', () => {

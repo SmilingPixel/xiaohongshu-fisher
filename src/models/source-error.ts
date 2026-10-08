@@ -3,6 +3,7 @@ export type SourceErrorCode =
 	| 'unauthenticated'
 	| 'access-restricted'
 	| 'browser-missing'
+	| 'browser-startup'
 	| 'network'
 	| 'parse-failure'
 	| 'not-found'
