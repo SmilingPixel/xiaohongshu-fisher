@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { BrowserSession, LoginSnapshot } from '../session/browser-session';
+import type { LoginQrImageProvider } from '../session/login-qr-image-provider';
 import { isLoginAssistantMessage, renderLoginAssistantHtml, toLoginAssistantViewState } from './login-assistant-security';
 
 const INITIAL_SNAPSHOT: LoginSnapshot = {
@@ -15,7 +16,7 @@ export class LoginAssistant implements vscode.Disposable {
 	private snapshot: LoginSnapshot = INITIAL_SNAPSHOT;
 	private webviewReady = false;
 
-	constructor(private readonly session: BrowserSession) {
+	constructor(private readonly session: BrowserSession, private readonly qrImageProvider: LoginQrImageProvider) {
 		this.snapshotSubscription = session.onLoginSnapshot(snapshot => this.update(snapshot));
 	}
 
@@ -56,6 +57,7 @@ export class LoginAssistant implements vscode.Disposable {
 		this.panel?.dispose();
 		this.panel = undefined;
 		this.session.stopLogin();
+		this.qrImageProvider.clear();
 	}
 
 	private getPanel(): vscode.WebviewPanel {
@@ -72,6 +74,7 @@ export class LoginAssistant implements vscode.Disposable {
 		this.disposables.push(panel.onDidDispose(() => {
 			this.panel = undefined;
 			this.session.stopLogin();
+			this.qrImageProvider.clear();
 		}));
 		return panel;
 	}
@@ -81,6 +84,12 @@ export class LoginAssistant implements vscode.Disposable {
 		if (value.command === 'ready') {
 			this.webviewReady = true;
 			await this.postSnapshot();
+			return;
+		}
+		if (value.command === 'show-qr') {
+			if (this.snapshot.qrImage) {
+				await vscode.commands.executeCommand('vscode.open', this.qrImageProvider.getUri(), { preview: false });
+			}
 			return;
 		}
 		if (value.command === 'refresh-qr') {
@@ -93,6 +102,7 @@ export class LoginAssistant implements vscode.Disposable {
 	private update(snapshot: LoginSnapshot): void {
 		if (!this.panel) {return;}
 		this.snapshot = snapshot;
+		this.qrImageProvider.setBase64Image(snapshot.qrImage);
 		void this.postSnapshot();
 	}
 

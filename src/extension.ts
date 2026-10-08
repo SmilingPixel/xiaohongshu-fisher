@@ -4,6 +4,7 @@ import type { FeedItem } from './models/content';
 import { SourceError } from './models/source-error';
 import { BrowserSession } from './session/browser-session';
 import { normalizeBrowserMode } from './session/browser-mode';
+import { LoginQrImageProvider } from './session/login-qr-image-provider';
 import { XiaohongshuPageSource } from './sources/xiaohongshu-page-source';
 import { LoginAssistant } from './webview/login-assistant';
 import { NoteReader } from './webview/note-reader';
@@ -111,7 +112,8 @@ export function activate(context: vscode.ExtensionContext): void {
 	const session = new BrowserSession(context.globalStorageUri, configuredMode);
 	const source = new XiaohongshuPageSource(session);
 	const application = new ContentApplicationService(source);
-	const loginAssistant = new LoginAssistant(session);
+	const loginQrImageProvider = new LoginQrImageProvider();
+	const loginAssistant = new LoginAssistant(session, loginQrImageProvider);
 	const reader = new NoteReader(application);
 	const providers: Record<ViewKey, StatusTreeProvider> = {
 		homeFeed: new StatusTreeProvider(`${COMMAND_PREFIX}refreshHomeFeed`),
@@ -119,7 +121,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		searchResults: new StatusTreeProvider(`${COMMAND_PREFIX}searchNotes`),
 	};
 
-	context.subscriptions.push(session, loginAssistant, reader, { dispose: () => application.dispose() }, ...Object.values(providers));
+	context.subscriptions.push(session, loginQrImageProvider, loginAssistant, reader, { dispose: () => application.dispose() }, ...Object.values(providers));
 	context.subscriptions.push({ dispose: () => { void source.dispose(); } });
 	context.subscriptions.push(
 		vscode.window.createTreeView('xiaohongshuFisher.homeFeed', { treeDataProvider: providers.homeFeed }),
