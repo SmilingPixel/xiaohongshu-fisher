@@ -4,7 +4,7 @@
 
 ## 当前范围
 
-扩展提供推荐、发现、搜索结果三个 TreeView，支持按需刷新、分页、打开笔记阅读页和跳转至小红书官方网页。数据由扩展宿主中的 Playwright 页面适配器读取。当前版本只面向能够启动可见 Chromium 窗口的桌面 VS Code 环境；VS Code Remote SSH、容器和 Web 环境尚未验证。
+扩展提供推荐、发现、搜索结果三个 TreeView，支持按需刷新、分页、打开笔记阅读页和跳转至小红书官方网页。数据由扩展宿主中的 Playwright 页面适配器读取。运行目标分为桌面可见模式和远程无头模式：桌面模式用于直接观察官方登录页，远程模式用于 VS Code Remote SSH、容器等没有图形桌面的扩展宿主。无头模式仍需完成平台行为验证后才进入实现。
 
 当前没有发帖、评论、点赞、收藏、关注、私信等互动功能。扩展不会导入用户日常浏览器的 Cookie，也不会自动处理验证码或访问限制。
 
@@ -54,7 +54,9 @@ flowchart TB
 
 `src/session/browser-session.ts` 通过 Playwright 启动独立、持久化的 Chromium 上下文，profile 存放在 VS Code `globalStorageUri` 下的 `browser-profile` 目录。用户通过官方网页自行登录；“清除会话”会关闭上下文并删除该目录。
 
-当前启动参数为 `headless: false`。因此服务器没有图形桌面或可用 `DISPLAY` 时无法启动浏览器；现有错误处理会将启动异常统一映射为“无法启动独立浏览器”，没有区分图形环境和系统依赖问题。远程无头模式尚未实现。
+当前启动参数为 `headless: false`，所以现有代码在服务器没有图形桌面或可用 `DISPLAY` 时无法启动浏览器。目标设计将启动方式抽象为 `visible` 与 `headless` 两种模式：桌面默认使用可见模式；远程环境选择无头模式，仍使用同一个扩展专属 profile 和页面 source。模式应由明确的配置或环境检测决定，不应在失败后静默切换，以免用户不知道登录页面实际运行在哪里。
+
+无头模式不把小红书页面嵌进 WebView，也不把 Cookie 发送给前端。登录页仍在 Playwright 页面中运行，扩展只定时检查页面状态，并把官方页面的短时截图作为登录辅助显示在 VS Code WebView 中。二维码过期、扫码失败或出现滑块/二次验证时，扩展停止轮询并提示用户在官方页面完成处理；不实现验证码识别或规避。
 
 ### 阅读 WebView
 
@@ -63,6 +65,52 @@ flowchart TB
 `src/webview/reader-security.ts` 转义文本，限制图片为允许的小红书/CDN HTTPS 域名，生成带随机 nonce 的 Content Security Policy，并校验 WebView 消息命令。WebView 不接收 Cookie、浏览器对象或原始平台响应，也不加载远程脚本。
 
 ## 主要流程
+
+### 运行模式选择
+
+```mermaid
+flowchart TD
+    Start[打开登录或读取命令] --> Config{浏览器模式}
+    Config -->|visible| Visible[启动可见持久化 Chromium]
+    Config -->|headless| Headless[启动无头持久化 Chromium]
+    Config -->|auto| Detect{扩展宿主有可用图形环境?}
+    Detect -->|是| Visible
+    Detect -->|否| Headless
+    Visible --> Session[复用扩展 profile]
+    Headless --> Session
+    Session --> Read[官方页面读取]
+    Headless --> LoginUI[扫码登录辅助 WebView]
+```
+
+`auto` 只能作为便捷默认值；诊断信息必须显示最终选择的模式。若 Chromium 缺少系统库、沙箱权限或其他启动依赖，应报告具体原因并提供安装说明，不把所有错误都归类为登录失败。
+
+### 远程无头登录
+
+```mermaid
+sequenceDiagram
+    actor User as 用户
+    participant Command as VS Code 命令
+    participant Session as BrowserSession
+    participant Page as 无头官方登录页
+    participant Login as 登录辅助 WebView
+    participant Site as 小红书
+
+    User->>Command: 选择“远程登录/打开登录页”
+    Command->>Session: 创建 headless 持久化上下文
+    Session->>Page: 导航官方登录页
+    loop 直到扫码成功、过期或验证失败
+        Page-->>Session: 页面状态与二维码区域
+        Session->>Login: 发送短时截图、过期时间和状态
+        User->>Login: 用手机扫描二维码
+        Page->>Site: 官方登录流程
+        Session->>Page: 低频检查登录状态
+    end
+    Page-->>Session: 已登录或需要人工验证
+    Session->>Login: 显示结果和下一步
+    Session->>Command: 允许用户刷新推荐/搜索
+```
+
+二维码辅助视图只接收截图、状态、倒计时和“刷新二维码/关闭/打开官方网页”等固定消息。截图应在内存中短暂保存，登录完成、过期或关闭面板后立即丢弃；不写入工作区、日志或持久化缓存。登录成功后，数据读取继续使用浏览器上下文，WebView 不持有会话材料。
 
 ### 刷新列表与翻页
 
@@ -134,6 +182,8 @@ sequenceDiagram
 
 ## 已知限制与后续决策
 
-当前 Playwright 必须能够启动可见窗口。Remote SSH 等远程扩展宿主常常没有图形桌面，因此目前不能承诺远程环境可用。若将远程环境纳入目标，需另行验证无头 Chromium、官方扫码登录 UI、登录状态复用、额外验证时的人工处理，以及浏览器系统依赖与安装体验，再决定是否支持。替代数据 source 也需单独评估，不能将社区项目可运行视为接口稳定或平台授权。
+远程无头模式是下一步设计目标，尚未在当前代码中实现。进入实现前需要验证：无头 Chromium 在支持的 Linux 发行版中启动；官方登录页在无头环境显示可扫描二维码；扫码后的 profile 能在后续命令中复用；二维码截图不会泄露到日志或其他 WebView；登录失效、二维码过期、滑块和二次验证都有明确状态；推荐、发现、搜索和详情仍能通过正常网页行为读取。
+
+可选的高级方案是用户在本地启动 Chrome 并通过 SSH 隧道暴露 CDP，再由远程扩展使用 Playwright `connectOverCDP` 连接。该方案可复用本地可见登录环境，但端口转发、浏览器生命周期、连接断开和凭证边界复杂，不作为默认路径；扩展不能自动发现或连接用户已有浏览器。
 
 日常依赖、脚本和打包使用 pnpm。核心本地验证为 `pnpm run compile`、`pnpm run lint` 和 `pnpm run test:unit`；完整 VS Code 扩展宿主测试需要可用的图形环境。
