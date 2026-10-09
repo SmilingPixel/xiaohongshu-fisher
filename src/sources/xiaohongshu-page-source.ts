@@ -4,6 +4,7 @@ import { SourceError } from '../models/source-error';
 import { getNoteToken, normalizeNoteDetail, normalizePageResponse } from './normalize';
 import type { ContentSource } from './content-source';
 import type { Page, Response } from 'playwright';
+import type { ExtensionLogger } from '../logging';
 
 const SITE_ORIGIN = 'https://www.xiaohongshu.com';
 const HOME_FEED_PATH = '/api/sns/web/v1/homefeed';
@@ -23,7 +24,7 @@ export class XiaohongshuPageSource implements ContentSource {
 	private readonly noteTokens = new Map<string, { token: string; source?: string }>();
 	private currentSearchKey?: string;
 
-	constructor(private readonly session: BrowserSession) {}
+	constructor(private readonly session: BrowserSession, private readonly logger?: ExtensionLogger) {}
 
 	getHomeFeed(cursor?: string, signal?: AbortSignal): Promise<PageResult<FeedItem>> {
 		return this.loadStream('home', `${SITE_ORIGIN}/`, HOME_FEED_PATH, cursor, signal);
@@ -44,6 +45,7 @@ export class XiaohongshuPageSource implements ContentSource {
 	}
 
 	async getNoteDetail(id: string, context?: NoteSourceContext, signal?: AbortSignal): Promise<NoteDetail> {
+		this.logger?.debug('Loading note detail.');
 		const url = this.getDetailUrl(id, context);
 		const page = await this.session.openPage();
 		try {
@@ -77,6 +79,7 @@ export class XiaohongshuPageSource implements ContentSource {
 	): Promise<PageResult<FeedItem>> {
 		if (signal?.aborted) {throw new SourceError('unknown', '请求已取消。', false);}
 		if (cursor === undefined) {
+			this.logger?.debug('Opening content stream: %s.', key.startsWith('search:') ? 'search' : key);
 			await this.closeStream(key);
 			const page = await this.session.openPage();
 			const stream: Stream = { page, nextIndex: 0, closed: false };
@@ -151,6 +154,7 @@ export class XiaohongshuPageSource implements ContentSource {
 			throw new SourceError('access-restricted', '页面返回了非官方域名的数据。', false);
 		}
 		if (response.status() === 401 || response.status() === 403 || response.status() === 429 || response.status() === 461 || response.status() === 471) {
+			this.logger?.warn('Official API response was restricted (status %s).', response.status());
 			throw new SourceError('access-restricted', '小红书暂时限制了此页面访问，请在官方页面处理后再试。', false);
 		}
 		const contentLength = Number(response.headers()['content-length'] ?? 0);
@@ -178,6 +182,8 @@ export class XiaohongshuPageSource implements ContentSource {
 			if (item && token.token) {this.noteTokens.set(item.id, { token: token.token, source: token.source });}
 		}
 		stream.nextIndex += 1;
+		this.logger?.debug('Normalized %s feed page %s (%s items, has more: %s).',
+			key.startsWith('search:') ? 'search' : key, stream.nextIndex, normalized.items.length, normalized.hasMore);
 		return {
 			items: normalized.items,
 			nextCursor: normalized.hasMore ? String(stream.nextIndex) : undefined,

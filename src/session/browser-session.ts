@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { SourceError } from '../models/source-error';
 import { browserModeLabel, resolveBrowserMode, type BrowserMode, type ResolvedBrowserMode } from './browser-mode';
 import { detectLoginState, type LoginDetection, type LoginStatus } from './login-state';
+import type { ExtensionLogger } from '../logging';
 
 const HOME_URL = 'https://www.xiaohongshu.com/';
 const PROFILE_DIRECTORY = 'browser-profile';
@@ -38,7 +39,7 @@ export class BrowserSession implements vscode.Disposable {
 	private loginImageCapturedAt = 0;
 	private lastLoginSnapshot?: LoginSnapshot;
 
-	constructor(storageUri: vscode.Uri, configuredMode: BrowserMode = 'auto') {
+	constructor(storageUri: vscode.Uri, configuredMode: BrowserMode = 'auto', private readonly logger?: ExtensionLogger) {
 		this.profilePath = path.join(storageUri.fsPath, PROFILE_DIRECTORY);
 		this.mode = resolveBrowserMode(configuredMode, {
 			display: process.env.DISPLAY,
@@ -62,6 +63,7 @@ export class BrowserSession implements vscode.Disposable {
 	}
 
 	async openLogin(): Promise<void> {
+		this.logger?.info('Opening official login page in %s browser.', this.mode);
 		const context = await this.getContext();
 		const page = await this.getLoginPage(context);
 		this.stopLoginPolling();
@@ -85,6 +87,7 @@ export class BrowserSession implements vscode.Disposable {
 		this.loginImageCapturedAt = 0;
 		this.lastLoginSnapshot = undefined;
 		const snapshot = await this.captureLoginSnapshot(page, true);
+		this.logger?.info('Headless login started; initial state: %s.', snapshot.status);
 		this.emitLoginSnapshot(snapshot);
 		this.startLoginPolling();
 		return snapshot;
@@ -101,12 +104,14 @@ export class BrowserSession implements vscode.Disposable {
 		this.loginImageCapturedAt = 0;
 		await page.goto(HOME_URL, { waitUntil: 'domcontentloaded' });
 		const snapshot = await this.captureLoginSnapshot(page, true);
+		this.logger?.info('Headless login QR refreshed; state: %s.', snapshot.status);
 		this.emitLoginSnapshot(snapshot);
 		this.startLoginPolling();
 		return snapshot;
 	}
 
 	stopLogin(): void {
+		this.logger?.debug('Stopping login polling and closing login page.');
 		this.stopLoginPolling();
 		this.loginExpiresAt = 0;
 		this.loginImage = undefined;
@@ -122,12 +127,14 @@ export class BrowserSession implements vscode.Disposable {
 	}
 
 	async clear(): Promise<void> {
+		this.logger?.info('Clearing extension-owned browser session.');
 		this.stopLogin();
 		await this.closeContext();
 		await rm(this.profilePath, { recursive: true, force: true });
 	}
 
 	async dispose(): Promise<void> {
+		this.logger?.debug('Disposing browser session.');
 		this.stopLogin();
 		await this.closeContext();
 		this.loginListeners.clear();
@@ -173,6 +180,7 @@ export class BrowserSession implements vscode.Disposable {
 	private async pollLogin(): Promise<void> {
 		if (this.loginPollInFlight || !this.loginPage || this.loginPage.isClosed()) {return;}
 		if (Date.now() >= this.loginExpiresAt) {
+			this.logger?.info('Login QR expired.');
 			this.stopLoginPolling();
 			this.loginImage = undefined;
 			this.loginImageCapturedAt = 0;
@@ -188,7 +196,8 @@ export class BrowserSession implements vscode.Disposable {
 			if (snapshot.status === 'logged-in' || snapshot.status === 'verification-required' || snapshot.status === 'expired') {
 				this.stopLoginPolling();
 			}
-		} catch {
+		} catch (error) {
+			this.logger?.warn('Login polling stopped after page inspection failed: %s.', error instanceof Error ? error.name : 'unknown error');
 			this.stopLoginPolling();
 			this.emitLoginSnapshot({
 				status: 'verification-required',
@@ -202,12 +211,14 @@ export class BrowserSession implements vscode.Disposable {
 
 	private async captureLoginSnapshot(page: Page, includeImage: boolean): Promise<LoginSnapshot> {
 		if (!this.isTrustedLoginPage(page.url())) {
+			this.logger?.warn('Stopped login inspection because the page left the official host.');
 			return this.toLoginSnapshot({
 				status: 'verification-required',
 				message: '官方登录页跳转到了不受支持的域名，已停止二维码读取。',
 			});
 		}
 		let bodyText = '';
+		// The login page can expose its QR image before its body text settles.
 		try {bodyText = await page.locator('body').innerText({ timeout: 1_500 });} catch { /* page may still be loading */ }
 		const qrLocator = await this.findQrLocator(page);
 		const detection = detectLoginState({
@@ -225,6 +236,7 @@ export class BrowserSession implements vscode.Disposable {
 			this.loginImage = image;
 			this.loginImageCapturedAt = Date.now();
 		}
+		this.logger?.debug('Login page state detected: %s.', detection.status);
 		return this.toLoginSnapshot(detection);
 	}
 
@@ -259,7 +271,8 @@ export class BrowserSession implements vscode.Disposable {
 			const image = await locator.screenshot({ type: 'png', animations: 'disabled' });
 			if (image.byteLength > LOGIN_IMAGE_LIMIT) {return undefined;}
 			return image.toString('base64');
-		} catch {
+		} catch (error) {
+			this.logger?.debug('QR screenshot unavailable: %s.', error instanceof Error ? error.name : 'unknown error');
 			return undefined;
 		}
 	}
@@ -282,6 +295,7 @@ export class BrowserSession implements vscode.Disposable {
 	}
 
 	private async launchContext(): Promise<BrowserContext> {
+		this.logger?.info('Launching persistent %s Chromium browser.', this.mode);
 		await mkdir(this.profilePath, { recursive: true });
 		if (!existsSync(chromium.executablePath())) {
 			throw new SourceError('browser-missing', '未安装 Playwright Chromium，请先运行“安装浏览器运行时”。', false);
@@ -290,6 +304,7 @@ export class BrowserSession implements vscode.Disposable {
 			return await chromium.launchPersistentContext(this.profilePath, { headless: this.mode === 'headless' });
 		} catch (error) {
 			const reason = error instanceof Error ? error.message : undefined;
+			this.logger?.error('Chromium launch failed: %s.', error instanceof Error ? error.name : 'unknown error');
 			const environmentHint = this.mode === 'visible'
 				? '请检查 DISPLAY/Wayland 桌面环境；无图形环境可将 browserMode 设置为 headless。'
 				: '请检查 Chromium 系统依赖和沙箱权限。';
@@ -302,6 +317,9 @@ export class BrowserSession implements vscode.Disposable {
 		const context = this.context;
 		this.context = undefined;
 		this.loginPage = undefined;
-		if (context) {await context.close().catch(() => undefined);}
+		if (context) {
+			this.logger?.debug('Closing persistent Chromium browser.');
+			await context.close().catch(() => undefined);
+		}
 	}
 }

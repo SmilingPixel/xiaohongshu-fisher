@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { BrowserSession, LoginSnapshot } from '../session/browser-session';
 import type { LoginQrImageProvider } from '../session/login-qr-image-provider';
 import { isLoginAssistantMessage, renderLoginAssistantHtml, toLoginAssistantViewState } from './login-assistant-security';
+import type { ExtensionLogger } from '../logging';
 
 const INITIAL_SNAPSHOT: LoginSnapshot = {
 	status: 'loading',
@@ -16,11 +17,12 @@ export class LoginAssistant implements vscode.Disposable {
 	private snapshot: LoginSnapshot = INITIAL_SNAPSHOT;
 	private webviewReady = false;
 
-	constructor(private readonly session: BrowserSession, private readonly qrImageProvider: LoginQrImageProvider) {
+	constructor(private readonly session: BrowserSession, private readonly qrImageProvider: LoginQrImageProvider, private readonly logger?: ExtensionLogger) {
 		this.snapshotSubscription = session.onLoginSnapshot(snapshot => this.update(snapshot));
 	}
 
 	async open(): Promise<void> {
+		this.logger?.info('Opening headless login assistant.');
 		const panel = this.getPanel();
 		this.snapshot = INITIAL_SNAPSHOT;
 		this.webviewReady = false;
@@ -28,6 +30,7 @@ export class LoginAssistant implements vscode.Disposable {
 		try {
 			this.update(await this.session.startHeadlessLogin());
 		} catch (error) {
+			this.logger?.warn('Headless login assistant failed to start: %s.', error instanceof Error ? error.name : 'unknown error');
 			this.update({
 				status: 'verification-required',
 				message: error instanceof Error ? error.message : '无法启动无头登录流程。',
@@ -38,6 +41,7 @@ export class LoginAssistant implements vscode.Disposable {
 	}
 
 	async refreshQr(): Promise<void> {
+		this.logger?.info('Refreshing login QR.');
 		if (!this.panel) {await this.open(); return;}
 		this.update({ status: 'loading', message: '正在向官方页面请求新二维码…', expiresAt: 0 });
 		try {

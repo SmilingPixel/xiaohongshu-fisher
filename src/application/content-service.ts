@@ -1,6 +1,7 @@
 import type { FeedItem, NoteDetail, NoteSourceContext, PageResult } from '../models/content';
 import { SourceError, toSourceError } from '../models/source-error';
 import type { ContentSource } from '../sources/content-source';
+import type { ExtensionLogger } from '../logging';
 
 export type FeedKey = 'home' | 'explore' | 'search';
 
@@ -40,7 +41,7 @@ export class ContentApplicationService {
 	private readonly requests = new Map<FeedKey, AbortController>();
 	private readonly listeners = new Set<StateListener>();
 
-	constructor(private readonly source: ContentSource) {}
+	constructor(private readonly source: ContentSource, private readonly logger?: ExtensionLogger) {}
 
 	getState(key: FeedKey): Readonly<FeedState> {
 		return { ...this.states[key], items: [...this.states[key].items] };
@@ -147,8 +148,14 @@ export class ContentApplicationService {
 		isLoadingMore: boolean
 	): Promise<void> {
 		try {
+			this.logger?.debug('Loading %s feed%s.', key, isLoadingMore ? ' next page' : '');
 			await operation();
+			this.logger?.debug('Loaded %s feed%s.', key, isLoadingMore ? ' next page' : '');
 		} catch (error) {
+			if (!controller.signal.aborted) {
+				const sourceError = toSourceError(error);
+				this.logger?.warn('Loading %s feed failed (%s).', key, sourceError.code);
+			}
 			if (!controller.signal.aborted && this.requests.get(key) === controller) {
 				this.states[key].error = toSourceError(error);
 			}
