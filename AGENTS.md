@@ -21,12 +21,25 @@ This repository contains **Xiaohongshu Fisher**, a Visual Studio Code extension 
 - Use VS Code APIs for user interaction, configuration, secrets, logging, external links, and progress reporting instead of implementing parallel UI or storage mechanisms.
 - Respect cancellation and avoid duplicate concurrent loads. Preserve existing view state when a refresh or next-page request fails.
 
+## Documentation and Comments
+
+- Write source code, identifiers, code comments, JSDoc, diagnostics, and developer-facing documentation in English, following common open-source project conventions. User-facing product text may remain localized where the feature requires it.
+- Add a concise module or class comment when it explains the module's main responsibility or the relationship between its collaborators. Document the broad functional flow at the boundary where a reader would otherwise need to inspect several files.
+- Add extra comments for complex business logic, platform-specific behavior, security boundaries, unusual workarounds, lifecycle constraints, pagination/state transitions, and error recovery. Explain the reason and invariant being preserved, not a restatement of the code.
+- Keep comments accurate and maintainable. Update or remove comments when behavior changes, and avoid comments that merely narrate obvious statements.
+
 ## Security and Privacy
 
 - Treat cookies, browser profiles, authentication tokens, request signatures, and personal content as sensitive. Never log them, place them in workspace settings, or send them to WebViews.
 - Store user secrets with VS Code `SecretStorage`; keep browser session data in an extension-owned local profile with a clear user-controlled cleanup path.
 - Treat content and URLs from the platform as untrusted input. Escape or sanitize rendered content, validate links, and use a restrictive Content Security Policy for WebViews. Do not load remote scripts into a WebView.
 - Do not add credential collection, automated posting/commenting, CAPTCHA bypass, fingerprint spoofing, or other mechanisms designed to evade platform controls.
+
+## Logging
+
+- Use the existing `ExtensionLogger` and its VS Code output channel for diagnostics. Do not introduce ad-hoc `console` logging or additional logger implementations.
+- Write log messages in English and use consistent, structured wording. Include the operation, state, error category, or other safe metadata needed to diagnose remote development issues.
+- Never log secrets, cookies, tokens, QR data, response bodies, personal content, or sensitive URL query parameters.
 
 ## TypeScript and Tests
 
