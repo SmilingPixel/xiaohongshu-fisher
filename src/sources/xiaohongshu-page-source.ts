@@ -5,6 +5,7 @@ import { getNoteToken, normalizeNoteDetail, normalizePageResponse } from './norm
 import type { ContentSource } from './content-source';
 import type { Page, Response } from 'playwright';
 import type { ExtensionLogger } from '../logging';
+import { classifyOfficialErrorRedirect, officialPageErrorSourceCode } from './official-page-error';
 
 const SITE_ORIGIN = 'https://www.xiaohongshu.com';
 const HOME_FEED_PATH = '/api/sns/web/v1/homefeed';
@@ -107,46 +108,72 @@ export class XiaohongshuPageSource implements ContentSource {
 	}
 
 	private async navigateAndCapture(page: Page, url: string, path: string, signal?: AbortSignal): Promise<unknown> {
-		const responsePromise = this.waitForApiResponse(page, path);
-		const abort = () => { void page.close().catch(() => undefined); };
-		signal?.addEventListener('abort', abort, { once: true });
+		const responsePromise = this.waitForApiResponse(page, path, signal);
 		try {
-			await page.goto(url, { waitUntil: 'domcontentloaded', timeout: RESPONSE_TIMEOUT });
-			return await this.readResponse(await responsePromise);
+			const [, response] = await Promise.all([
+				page.goto(url, { waitUntil: 'domcontentloaded', timeout: RESPONSE_TIMEOUT }),
+				responsePromise,
+			]);
+			return await this.readResponse(response);
 		} catch (error) {
 			if (signal?.aborted) {throw new SourceError('unknown', '请求已取消。', false);}
 			if (error instanceof SourceError) {throw error;}
 			throw new SourceError('network', '无法从当前页面读取内容，请检查网络或登录状态。', true);
-		} finally {
-			signal?.removeEventListener('abort', abort);
 		}
 	}
 
 	private async captureAfterScroll(page: Page, path: string, signal?: AbortSignal): Promise<unknown> {
-		const responsePromise = this.waitForApiResponse(page, path);
-		const abort = () => { void page.close().catch(() => undefined); };
-		signal?.addEventListener('abort', abort, { once: true });
+		const responsePromise = this.waitForApiResponse(page, path, signal);
 		try {
-			await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
-			return await this.readResponse(await responsePromise);
+			const [, response] = await Promise.all([
+				page.evaluate('window.scrollTo(0, document.body.scrollHeight)'),
+				responsePromise,
+			]);
+			return await this.readResponse(response);
 		} catch (error) {
 			if (signal?.aborted) {throw new SourceError('unknown', '请求已取消。', false);}
 			if (error instanceof SourceError) {throw error;}
 			throw new SourceError('network', '页面没有返回下一页内容，请稍后重试。', true);
-		} finally {
-			signal?.removeEventListener('abort', abort);
 		}
 	}
 
-	private waitForApiResponse(page: Page, path: string): Promise<Response> {
-		return page.waitForResponse(response => {
-			try {
-				const url = new URL(response.url());
-				return this.isAllowedHost(url.hostname) && url.pathname === path;
-			} catch {
-				return false;
-			}
-		}, { timeout: RESPONSE_TIMEOUT });
+	private waitForApiResponse(page: Page, path: string, signal?: AbortSignal): Promise<Response> {
+		return new Promise<Response>((resolve, reject) => {
+			let settled = false;
+			const finish = (error?: SourceError, response?: Response): void => {
+				if (settled) {return;}
+				settled = true;
+				clearTimeout(timeout);
+				page.off('response', onResponse);
+				page.off('framenavigated', onFrameNavigated);
+				page.off('close', onClose);
+				signal?.removeEventListener('abort', onAbort);
+				if (error) {reject(error);}
+				else if (response) {resolve(response);}
+			};
+			const onResponse = (response: Response): void => {
+				try {
+					const url = new URL(response.url());
+					if (this.isAllowedHost(url.hostname) && url.pathname === path) {finish(undefined, response);}
+				} catch { /* Ignore malformed and unrelated response URLs. */ }
+			};
+			const onFrameNavigated = (frame: import('playwright').Frame): void => {
+				if (frame !== page.mainFrame()) {return;}
+				const error = classifyOfficialErrorRedirect(frame.url());
+				if (error) {
+					this.logger?.warn('Official page redirect detected (operation: content-load, kind: %s, code: %s).', error.kind, error.platformCode ?? 'unknown');
+					finish(new SourceError(officialPageErrorSourceCode(error), error.message, false));
+				}
+			};
+			const onAbort = (): void => finish(new SourceError('unknown', '请求已取消。', false));
+			const onClose = (): void => finish(new SourceError('network', '内容页面已关闭，无法继续读取。', true));
+			const timeout = setTimeout(() => finish(new SourceError('network', '页面没有在规定时间内返回内容，请检查网络或登录状态。', true)), RESPONSE_TIMEOUT);
+			page.on('response', onResponse);
+			page.on('framenavigated', onFrameNavigated);
+			page.on('close', onClose);
+			signal?.addEventListener('abort', onAbort, { once: true });
+			if (signal?.aborted) {onAbort();}
+		});
 	}
 
 	private async readResponse(response: Response): Promise<unknown> {

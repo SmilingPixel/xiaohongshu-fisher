@@ -18,7 +18,9 @@ test('keeps the page loading until a QR image is available', () => {
 });
 
 test('detects official risk restriction pages', () => {
-	assert.equal(detectLoginState({ ...base, url: 'https://www.xiaohongshu.com/website-login/error', bodyText: '安全限制 300012', hasQr: false }).status, 'verification-required');
+	assert.equal(detectLoginState({ ...base, url: 'https://www.xiaohongshu.com/website-login/error?error_code=300012', bodyText: '', hasQr: false }).status, 'access-restricted');
+	assert.equal(detectLoginState({ ...base, url: 'https://www.xiaohongshu.com/website-login/error?error_code=400001', bodyText: '', hasQr: false }).status, 'page-error');
+	assert.equal(detectLoginState({ ...base, url: 'https://www.xiaohongshu.com/website-login/error', bodyText: '安全限制 300012', hasQr: false }).status, 'page-error');
 });
 
 test('stops the login flow for verification and expired QR states', () => {

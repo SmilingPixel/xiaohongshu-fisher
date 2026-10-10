@@ -10,18 +10,23 @@ const INITIAL_SNAPSHOT: LoginSnapshot = {
 	expiresAt: 0,
 };
 
+const LOGIN_TERMINAL_STATES = new Set<LoginSnapshot['status']>(['access-restricted', 'page-error', 'verification-required']);
+
 export class LoginAssistant implements vscode.Disposable {
 	private panel?: vscode.WebviewPanel;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly snapshotSubscription: vscode.Disposable;
 	private snapshot: LoginSnapshot = INITIAL_SNAPSHOT;
 	private webviewReady = false;
+	private attemptInFlight = false;
 
 	constructor(private readonly session: BrowserSession, private readonly qrImageProvider: LoginQrImageProvider, private readonly logger?: ExtensionLogger) {
 		this.snapshotSubscription = session.onLoginSnapshot(snapshot => this.update(snapshot));
 	}
 
 	async open(): Promise<void> {
+		if (this.attemptInFlight) {return;}
+		this.attemptInFlight = true;
 		this.logger?.info('Opening headless login assistant.');
 		const panel = this.getPanel();
 		this.snapshot = INITIAL_SNAPSHOT;
@@ -32,26 +37,38 @@ export class LoginAssistant implements vscode.Disposable {
 		} catch (error) {
 			this.logger?.warn('Headless login assistant failed to start: %s.', error instanceof Error ? error.name : 'unknown error');
 			this.update({
-				status: 'verification-required',
+				status: 'page-error',
 				message: error instanceof Error ? error.message : '无法启动无头登录流程。',
 				expiresAt: 0,
 			});
 			throw error;
+		} finally {
+			this.attemptInFlight = false;
+			void this.postSnapshot();
 		}
 	}
 
 	async refreshQr(): Promise<void> {
+		if (this.attemptInFlight) {return;}
+		this.attemptInFlight = true;
 		this.logger?.info('Refreshing login QR.');
-		if (!this.panel) {await this.open(); return;}
+		if (!this.panel) {
+			this.attemptInFlight = false;
+			await this.open();
+			return;
+		}
 		this.update({ status: 'loading', message: '正在向官方页面请求新二维码…', expiresAt: 0 });
 		try {
 			this.update(await this.session.refreshHeadlessLoginQr());
 		} catch (error) {
 			this.update({
-				status: 'verification-required',
+				status: 'page-error',
 				message: error instanceof Error ? error.message : '无法刷新二维码。',
 				expiresAt: 0,
 			});
+		} finally {
+			this.attemptInFlight = false;
+			void this.postSnapshot();
 		}
 	}
 
@@ -91,7 +108,7 @@ export class LoginAssistant implements vscode.Disposable {
 			return;
 		}
 		if (value.command === 'show-qr') {
-			if (this.snapshot.qrImage) {
+			if (!LOGIN_TERMINAL_STATES.has(this.snapshot.status) && this.snapshot.qrImage) {
 				await vscode.commands.executeCommand('vscode.open', this.qrImageProvider.getUri(), { preview: false });
 			}
 			return;
@@ -106,12 +123,13 @@ export class LoginAssistant implements vscode.Disposable {
 	private update(snapshot: LoginSnapshot): void {
 		if (!this.panel) {return;}
 		this.snapshot = snapshot;
-		this.qrImageProvider.setBase64Image(snapshot.qrImage);
+		this.qrImageProvider.setBase64Image(LOGIN_TERMINAL_STATES.has(snapshot.status) ? undefined : snapshot.qrImage);
 		void this.postSnapshot();
 	}
 
 	private async postSnapshot(): Promise<void> {
 		if (!this.panel || !this.webviewReady) {return;}
-		await this.panel.webview.postMessage(toLoginAssistantViewState(this.snapshot));
+		const state = toLoginAssistantViewState(this.snapshot);
+		await this.panel.webview.postMessage({ ...state, attemptInFlight: this.attemptInFlight });
 	}
 }

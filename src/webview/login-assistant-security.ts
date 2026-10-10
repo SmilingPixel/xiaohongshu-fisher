@@ -17,14 +17,15 @@ export function toLoginAssistantViewState(snapshot: LoginSnapshot): {
 	qrAvailable: boolean;
 	expiresAt: number;
 } {
-	const qrImage = snapshot.qrImage && snapshot.qrImage.length <= 1_400_000 && /^[A-Za-z0-9+/=]+$/.test(snapshot.qrImage)
+	const terminal = snapshot.status === 'access-restricted' || snapshot.status === 'page-error' || snapshot.status === 'verification-required';
+	const qrImage = !terminal && snapshot.qrImage && snapshot.qrImage.length <= 1_400_000 && /^[A-Za-z0-9+/=]+$/.test(snapshot.qrImage)
 		? snapshot.qrImage
 		: undefined;
 	return {
 		status: snapshot.status,
 		message: snapshot.message.slice(0, 500),
 		qrAvailable: Boolean(qrImage),
-		expiresAt: Number.isFinite(snapshot.expiresAt) ? snapshot.expiresAt : 0,
+		expiresAt: terminal ? 0 : (Number.isFinite(snapshot.expiresAt) ? snapshot.expiresAt : 0),
 	};
 }
 
@@ -48,7 +49,9 @@ export function renderLoginAssistantHtml(snapshot: LoginSnapshot): string {
 		`script-src 'nonce-${scriptNonce}'`,
 	].join('; ');
 	const viewState = toLoginAssistantViewState(snapshot);
-	const canRefresh = viewState.status === 'expired' || viewState.status === 'qr-unavailable' || !viewState.qrAvailable;
+	const terminal = viewState.status === 'access-restricted' || viewState.status === 'page-error' || viewState.status === 'verification-required';
+	const canRefresh = terminal || viewState.status === 'expired' || viewState.status === 'qr-unavailable';
+	const retryLabel = terminal ? '重新尝试登录' : '刷新二维码';
 	return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -73,7 +76,7 @@ export function renderLoginAssistantHtml(snapshot: LoginSnapshot): string {
 	<p class="notice" id="countdown"></p>
 	<div class="actions">
 		<button id="show-qr"${viewState.qrAvailable ? '' : ' disabled'}>在编辑器中显示二维码</button>
-		<button id="refresh"${canRefresh ? '' : ' disabled'}>刷新二维码</button>
+		<button id="refresh"${canRefresh ? '' : ' disabled'}>${retryLabel}</button>
 		<button id="close">关闭</button>
 	</div>
 	<p class="notice">请使用小红书手机客户端扫码并确认。若页面要求其他验证，请停止此流程并稍后重试；本扩展不会自动处理验证码。</p>
@@ -94,14 +97,16 @@ export function renderLoginAssistantHtml(snapshot: LoginSnapshot): string {
 		window.addEventListener('message', event => {
 			const data = event.data;
 			if (!data || typeof data.message !== 'string' || typeof data.status !== 'string' ||
-				typeof data.expiresAt !== 'number' || typeof data.qrAvailable !== 'boolean') return;
+				typeof data.expiresAt !== 'number' || typeof data.qrAvailable !== 'boolean' || typeof data.attemptInFlight !== 'boolean') return;
 			currentStatus = data.status;
 			expiresAt = data.expiresAt;
 			updateCountdown();
 			document.getElementById('status').textContent = data.message;
 			const refresh = document.getElementById('refresh');
-			refresh.disabled = currentStatus !== 'expired' && currentStatus !== 'qr-unavailable' && data.qrAvailable;
-			document.getElementById('show-qr').disabled = !data.qrAvailable;
+			const terminal = currentStatus === 'access-restricted' || currentStatus === 'page-error' || currentStatus === 'verification-required';
+			refresh.disabled = data.attemptInFlight || !(terminal || currentStatus === 'expired' || currentStatus === 'qr-unavailable');
+			refresh.textContent = terminal ? '重新尝试登录' : '刷新二维码';
+			document.getElementById('show-qr').disabled = terminal || !data.qrAvailable;
 		});
 	</script>
 </body>
