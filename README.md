@@ -9,7 +9,7 @@
 3. 返回 VS Code，在“推荐”或“发现”视图标题栏选择刷新；在“搜索结果”视图运行“小红书: 搜索笔记”。
 4. 选择笔记打开内置阅读页。阅读页也提供“在浏览器中打开”入口。
 
-若缺少 Playwright Chromium，运行命令面板中的“安装 Playwright Chromium”。该命令会在 VS Code 终端中启动安装流程，不会在扩展激活时静默下载浏览器。安装完成后重新打开登录页或刷新列表。
+若缺少 Playwright Chromium，运行命令面板中的“安装 Playwright Chromium”。该命令会在 VS Code 终端中启动安装流程；Linux 下同时安装系统依赖，可能需要 sudo 权限，不会在扩展激活时静默下载浏览器。安装完成后重新打开登录页或刷新列表。
 
 浏览器模式可在设置中选择：`auto` 会根据 `DISPLAY`/Wayland 环境选择可见或无头模式，`visible` 强制使用窗口，`headless` 适合远程服务器。无头登录只显示官方页面二维码的短时截图，不保存截图，也不会把 Cookie 发送到 WebView。
 
@@ -38,7 +38,7 @@
 | 小红书: 加载更多 | 继续读取当前列表 |
 | 小红书: 打开小红书登录页 | 打开独立的官方网页会话 |
 | 小红书: 刷新小红书登录二维码 | 在无头模式下请求新的官方二维码 |
-| 小红书: 安装 Playwright Chromium | 在终端安装浏览器运行时 |
+| 小红书: 安装 Playwright Chromium | 在终端安装浏览器运行时，Linux 下同时安装系统依赖 |
 | 小红书: 清除小红书会话 | 删除扩展专属浏览器 profile |
 
 ## 开发
@@ -51,3 +51,14 @@ pnpm run test:unit
 ```
 
 完整 `pnpm test` 还需要可启动 VS Code Electron 的图形环境。
+
+## 浏览器故障排查
+
+若出现“无法启动无头 Chromium”，可在“输出”面板选择 **Xiaohongshu Fisher**，查看启动模式、平台、错误类别和缺少的动态库名称。
+
+- **缺少系统依赖**（如 `libatk-1.0.so.0`）：运行命令面板中的“安装 Playwright Chromium”。在本仓库开发时，也可在仓库目录执行 `pnpm exec playwright install-deps chromium`，只安装系统依赖。无头模式同样需要这些库。
+- **缺少浏览器运行时**：运行“安装 Playwright Chromium”。Playwright 的无头模式使用独立的 headless shell，仅安装可见 Chromium 并不一定足够。
+- **图形显示不可用**：无图形服务器应设置 `xiaohongshu-fisher.browserMode` 为 `headless`，然后重新加载 VS Code 窗口。
+- **沙箱、目录权限或会话占用**：根据具体错误检查主机或容器权限，或关闭占用同一会话的浏览器/VS Code 窗口后重试。
+
+Remote SSH、Dev Container 等场景需要在**运行扩展的远程主机或容器内**安装依赖；在本地电脑安装不会修复远程启动失败。Linux 系统依赖通过系统包管理器安装；没有 sudo 权限时，请让管理员安装或将依赖加入容器镜像。

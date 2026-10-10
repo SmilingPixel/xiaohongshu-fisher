@@ -199,8 +199,8 @@ export function activate(context: vscode.ExtensionContext): void {
 			await source.openLogin();
 		} catch (error) {
 			const sourceError = error instanceof SourceError ? error : undefined;
-			if (sourceError?.code === 'browser-missing') {
-				void vscode.window.showErrorMessage(sourceError.message, '安装浏览器运行时').then(selection => {
+			if (sourceError?.code === 'browser-missing' || sourceError?.code === 'browser-dependencies') {
+				void vscode.window.showErrorMessage(sourceError.message, '安装 Playwright Chromium').then(selection => {
 					if (selection) {void vscode.commands.executeCommand(`${COMMAND_PREFIX}installBrowserRuntime`);}
 				});
 				return;
@@ -221,7 +221,9 @@ export function activate(context: vscode.ExtensionContext): void {
 			cwd: context.extensionUri.fsPath,
 		});
 		terminal.show();
-		terminal.sendText('pnpm exec playwright install chromium');
+		terminal.sendText(process.platform === 'linux'
+			? 'pnpm exec playwright install --with-deps chromium'
+			: 'pnpm exec playwright install chromium');
 	});
 	registerCommand(context, 'clearSession', async () => {
 		const answer = await vscode.window.showWarningMessage(

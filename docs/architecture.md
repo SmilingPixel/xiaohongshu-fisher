@@ -54,7 +54,9 @@ flowchart TB
 
 `src/session/browser-session.ts` 通过 Playwright 启动独立、持久化的 Chromium 上下文，profile 存放在 VS Code `globalStorageUri` 下的 `browser-profile` 目录。用户通过官方网页自行登录；“清除会话”会关闭上下文并删除该目录。
 
-当前启动参数为 `headless: false`，所以现有代码在服务器没有图形桌面或可用 `DISPLAY` 时无法启动浏览器。目标设计将启动方式抽象为 `visible` 与 `headless` 两种模式：桌面默认使用可见模式；远程环境选择无头模式，仍使用同一个扩展专属 profile 和页面 source。模式应由明确的配置或环境检测决定，不应在失败后静默切换，以免用户不知道登录页面实际运行在哪里。
+`BrowserSession` resolves `auto`, `visible`, or `headless` from configuration and the extension host environment before launching the persistent context. Both modes use the same extension-owned profile and page source. Launch failures do not silently switch modes.
+
+`src/session/browser-startup.ts` classifies launch failures into missing runtime, missing system dependencies, display, sandbox, profile lock, permission, or unknown errors. Playwright validates the executable selected for the active mode because headless Chromium uses a separate runtime. Logs contain only the mode, platform, category, and missing library basenames; raw launch arguments and profile paths never leave the classifier. On Linux, the user-triggered runtime installation command includes `--with-deps` and runs in the extension host terminal, where the system package manager may request sudo privileges.
 
 无头模式不把小红书页面嵌进 WebView，也不把 Cookie 发送给前端。登录页仍在 Playwright 页面中运行，扩展只定时检查页面状态，并把官方页面的短时截图作为登录辅助显示在 VS Code WebView 中。二维码过期、扫码失败或出现滑块/二次验证时，扩展停止轮询并提示用户在官方页面完成处理；不实现验证码识别或规避。
 
