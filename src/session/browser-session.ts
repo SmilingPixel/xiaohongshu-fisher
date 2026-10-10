@@ -10,10 +10,12 @@ import { detectLoginState, type LoginDetection, type LoginStatus } from './login
 import type { ExtensionLogger } from '../logging';
 
 const HOME_URL = 'https://www.xiaohongshu.com/';
+const LOGIN_URL = 'https://www.xiaohongshu.com/login';
 const PROFILE_DIRECTORY = 'browser-profile';
 const LOGIN_POLL_INTERVAL = 2_000;
 const LOGIN_IMAGE_REFRESH_INTERVAL = 10_000;
 const LOGIN_QR_LIFETIME = 2 * 60 * 1_000;
+const LOGIN_QR_WAIT_TIMEOUT = 15_000;
 const LOGIN_IMAGE_LIMIT = 1_024 * 1_024;
 
 export interface LoginSnapshot {
@@ -81,15 +83,17 @@ export class BrowserSession implements vscode.Disposable {
 		}
 		const page = await this.getLoginPage(await this.getContext());
 		this.stopLoginPolling();
-		await page.goto(HOME_URL, { waitUntil: 'domcontentloaded' });
-		this.loginExpiresAt = Date.now() + LOGIN_QR_LIFETIME;
+		await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
+		this.loginExpiresAt = 0;
 		this.loginImage = undefined;
 		this.loginImageCapturedAt = 0;
 		this.lastLoginSnapshot = undefined;
-		const snapshot = await this.captureLoginSnapshot(page, true);
+		const snapshot = await this.waitForLoginSnapshot(page);
 		this.logger?.info('Headless login started; initial state: %s.', snapshot.status);
 		this.emitLoginSnapshot(snapshot);
-		this.startLoginPolling();
+		if (snapshot.status !== 'qr-unavailable' && snapshot.status !== 'verification-required' && snapshot.status !== 'logged-in') {
+			this.startLoginPolling();
+		}
 		return snapshot;
 	}
 
@@ -99,14 +103,16 @@ export class BrowserSession implements vscode.Disposable {
 		}
 		const page = await this.getLoginPage(await this.getContext());
 		this.stopLoginPolling();
-		this.loginExpiresAt = Date.now() + LOGIN_QR_LIFETIME;
+		this.loginExpiresAt = 0;
 		this.loginImage = undefined;
 		this.loginImageCapturedAt = 0;
-		await page.goto(HOME_URL, { waitUntil: 'domcontentloaded' });
-		const snapshot = await this.captureLoginSnapshot(page, true);
+		await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
+		const snapshot = await this.waitForLoginSnapshot(page);
 		this.logger?.info('Headless login QR refreshed; state: %s.', snapshot.status);
 		this.emitLoginSnapshot(snapshot);
-		this.startLoginPolling();
+		if (snapshot.status !== 'qr-unavailable' && snapshot.status !== 'verification-required' && snapshot.status !== 'logged-in') {
+			this.startLoginPolling();
+		}
 		return snapshot;
 	}
 
@@ -179,7 +185,7 @@ export class BrowserSession implements vscode.Disposable {
 
 	private async pollLogin(): Promise<void> {
 		if (this.loginPollInFlight || !this.loginPage || this.loginPage.isClosed()) {return;}
-		if (Date.now() >= this.loginExpiresAt) {
+		if (this.loginExpiresAt > 0 && Date.now() >= this.loginExpiresAt) {
 			this.logger?.info('Login QR expired.');
 			this.stopLoginPolling();
 			this.loginImage = undefined;
@@ -193,7 +199,7 @@ export class BrowserSession implements vscode.Disposable {
 			const shouldRefreshImage = !this.loginImage || Date.now() - this.loginImageCapturedAt >= LOGIN_IMAGE_REFRESH_INTERVAL;
 			const snapshot = await this.captureLoginSnapshot(this.loginPage, shouldRefreshImage);
 			this.emitLoginSnapshot(snapshot);
-			if (snapshot.status === 'logged-in' || snapshot.status === 'verification-required' || snapshot.status === 'expired') {
+			if (snapshot.status === 'logged-in' || snapshot.status === 'verification-required' || snapshot.status === 'expired' || snapshot.status === 'qr-unavailable') {
 				this.stopLoginPolling();
 			}
 		} catch (error) {
@@ -234,14 +240,37 @@ export class BrowserSession implements vscode.Disposable {
 		} else if (includeImage) {
 			const image = await this.captureQrImage(page, qrLocator);
 			this.loginImage = image;
-			this.loginImageCapturedAt = Date.now();
+			if (image) {
+				this.loginImageCapturedAt = Date.now();
+				this.loginExpiresAt = this.loginImageCapturedAt + LOGIN_QR_LIFETIME;
+			} else {
+				this.loginImageCapturedAt = 0;
+			}
+		}
+		if (detection.status === 'waiting-scan' && !this.loginImage) {
+			return this.toLoginSnapshot({ status: 'loading', message: '正在读取官方登录二维码…' });
 		}
 		this.logger?.debug('Login page state detected: %s.', detection.status);
 		return this.toLoginSnapshot(detection);
 	}
 
+	private async waitForLoginSnapshot(page: Page): Promise<LoginSnapshot> {
+		const deadline = Date.now() + LOGIN_QR_WAIT_TIMEOUT;
+		let snapshot = await this.captureLoginSnapshot(page, true);
+		while (Date.now() < deadline && snapshot.status === 'loading') {
+			await new Promise(resolve => setTimeout(resolve, 500));
+			snapshot = await this.captureLoginSnapshot(page, true);
+		}
+		if (snapshot.status === 'loading') {
+			this.logger?.info('Login QR was not available within %d ms.', LOGIN_QR_WAIT_TIMEOUT);
+			return this.toLoginSnapshot({ status: 'qr-unavailable', message: '未能在规定时间内读取二维码，请刷新后重试。' });
+		}
+		return snapshot;
+	}
+
 	private async findQrLocator(page: Page): Promise<import('playwright').Locator | undefined> {
 		const selectors = [
+			'img.qrcode-img',
 			'img[alt*="二维码"]',
 			'img[src*="qrcode"]',
 			'img[src*="qr"]',

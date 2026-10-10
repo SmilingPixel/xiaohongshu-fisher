@@ -13,6 +13,14 @@ test('detects official QR waiting state and successful login text', () => {
 	assert.equal(detectLoginState({ ...base, bodyText: '我的主页 退出登录', hasQr: false }).status, 'logged-in');
 });
 
+test('keeps the page loading until a QR image is available', () => {
+	assert.equal(detectLoginState({ ...base, bodyText: '扫码登录', hasQr: false }).status, 'loading');
+});
+
+test('detects official risk restriction pages', () => {
+	assert.equal(detectLoginState({ ...base, url: 'https://www.xiaohongshu.com/website-login/error', bodyText: '安全限制 300012', hasQr: false }).status, 'verification-required');
+});
+
 test('stops the login flow for verification and expired QR states', () => {
 	assert.equal(detectLoginState({ ...base, bodyText: '请完成安全验证', hasQr: false }).status, 'verification-required');
 	assert.equal(detectLoginState({ ...base, bodyText: '', hasQr: true, now: 100_000 }).status, 'expired');

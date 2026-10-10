@@ -48,7 +48,7 @@ export function renderLoginAssistantHtml(snapshot: LoginSnapshot): string {
 		`script-src 'nonce-${scriptNonce}'`,
 	].join('; ');
 	const viewState = toLoginAssistantViewState(snapshot);
-	const canRefresh = viewState.status === 'expired' || !viewState.qrAvailable;
+	const canRefresh = viewState.status === 'expired' || viewState.status === 'qr-unavailable' || !viewState.qrAvailable;
 	return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -100,7 +100,7 @@ export function renderLoginAssistantHtml(snapshot: LoginSnapshot): string {
 			updateCountdown();
 			document.getElementById('status').textContent = data.message;
 			const refresh = document.getElementById('refresh');
-			refresh.disabled = currentStatus !== 'expired' && data.qrAvailable;
+			refresh.disabled = currentStatus !== 'expired' && currentStatus !== 'qr-unavailable' && data.qrAvailable;
 			document.getElementById('show-qr').disabled = !data.qrAvailable;
 		});
 	</script>
