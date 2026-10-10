@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { formatLogMessage } from './logging-format';
 
 /**
  * Extension-wide diagnostic channel. Callers must pass only operational metadata;
@@ -12,10 +13,10 @@ export class ExtensionLogger implements vscode.Disposable {
 		this.channel = vscode.window.createOutputChannel('Xiaohongshu Fisher', { log: true });
 	}
 
-	debug(message: string, ...args: unknown[]): void { this.channel.debug(message, ...args); }
-	info(message: string, ...args: unknown[]): void { this.channel.info(message, ...args); }
-	warn(message: string, ...args: unknown[]): void { this.channel.warn(message, ...args); }
-	error(message: string, ...args: unknown[]): void { this.channel.error(message, ...args); }
+	debug(message: string, ...args: unknown[]): void { this.channel.debug(formatLogMessage(message, args)); }
+	info(message: string, ...args: unknown[]): void { this.channel.info(formatLogMessage(message, args)); }
+	warn(message: string, ...args: unknown[]): void { this.channel.warn(formatLogMessage(message, args)); }
+	error(message: string, ...args: unknown[]): void { this.channel.error(formatLogMessage(message, args)); }
 
 	dispose(): void { this.channel.dispose(); }
 }
