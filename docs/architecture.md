@@ -54,7 +54,9 @@ flowchart TB
 
 `src/session/browser-session.ts` 通过 Playwright 启动独立、持久化的 Chromium 上下文，profile 存放在 VS Code `globalStorageUri` 下的 `browser-profile` 目录。用户通过官方网页自行登录；“清除会话”会关闭上下文并删除该目录。
 
-当前启动参数为 `headless: false`，所以现有代码在服务器没有图形桌面或可用 `DISPLAY` 时无法启动浏览器。目标设计将启动方式抽象为 `visible` 与 `headless` 两种模式：桌面默认使用可见模式；远程环境选择无头模式，仍使用同一个扩展专属 profile 和页面 source。模式应由明确的配置或环境检测决定，不应在失败后静默切换，以免用户不知道登录页面实际运行在哪里。
+`BrowserSession` resolves `auto`, `visible`, or `headless` from configuration and the extension host environment before launching the persistent context. Both modes use the same extension-owned profile and page source. Launch failures do not silently switch modes.
+
+`src/session/browser-startup.ts` classifies launch failures into missing runtime, missing system dependencies, display, sandbox, profile lock, permission, or unknown errors. Playwright validates the executable selected for the active mode because headless Chromium uses a separate runtime. Logs contain only the mode, platform, category, and missing library basenames; raw launch arguments and profile paths never leave the classifier. On Linux, the user-triggered runtime installation command includes `--with-deps` and runs in the extension host terminal, where the system package manager may request sudo privileges.
 
 无头模式不把小红书页面嵌进 WebView，也不把 Cookie 发送给前端。登录页仍在 Playwright 页面中运行，扩展只定时检查页面状态，并把官方页面的短时截图作为登录辅助显示在 VS Code WebView 中。二维码过期、扫码失败或出现滑块/二次验证时，扩展停止轮询并提示用户在官方页面完成处理；不实现验证码识别或规避。
 
@@ -110,7 +112,7 @@ sequenceDiagram
     Session->>Command: 允许用户刷新推荐/搜索
 ```
 
-二维码辅助视图只接收截图、状态、倒计时和“刷新二维码/关闭/打开官方网页”等固定消息。截图应在内存中短暂保存，登录完成、过期或关闭面板后立即丢弃；不写入工作区、日志或持久化缓存。登录成功后，数据读取继续使用浏览器上下文，WebView 不持有会话材料。
+二维码辅助视图只接收截图、状态、倒计时和“刷新二维码/重新尝试登录/关闭”等固定消息。官方错误页会先按受信任的主框架 URL 分类；300012 映射为网络 IP 风险，其他错误页映射为通用页面错误，均停止轮询并清理二维码。截图应在内存中短暂保存，登录完成、过期、错误或关闭面板后立即丢弃；不写入工作区、日志或持久化缓存。登录成功后，数据读取继续使用浏览器上下文，WebView 不持有会话材料。
 
 ### 刷新列表与翻页
 
@@ -182,7 +184,7 @@ sequenceDiagram
 
 ## 已知限制与后续决策
 
-远程无头模式是下一步设计目标，尚未在当前代码中实现。进入实现前需要验证：无头 Chromium 在支持的 Linux 发行版中启动；官方登录页在无头环境显示可扫描二维码；扫码后的 profile 能在后续命令中复用；二维码截图不会泄露到日志或其他 WebView；登录失效、二维码过期、滑块和二次验证都有明确状态；推荐、发现、搜索和详情仍能通过正常网页行为读取。
+登录重定向处理依赖官方主框架导航，内容读取和扫码登录共用 URL 分类器。错误页不会触发自动重试、重放重定向参数或删除浏览器 profile；用户处理网络或官方页面后显式重试。远程主机的网络环境可能与本地电脑不同，IP 风险提示应在运行扩展的主机或容器侧排查。
 
 可选的高级方案是用户在本地启动 Chrome 并通过 SSH 隧道暴露 CDP，再由远程扩展使用 Playwright `connectOverCDP` 连接。该方案可复用本地可见登录环境，但端口转发、浏览器生命周期、连接断开和凭证边界复杂，不作为默认路径；扩展不能自动发现或连接用户已有浏览器。
 

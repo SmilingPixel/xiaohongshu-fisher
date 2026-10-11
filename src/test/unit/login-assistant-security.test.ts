@@ -30,3 +30,19 @@ test('escapes status text and never sends QR image data to the WebView', () => {
 	assert.equal(html.includes('<script src='), false);
 	assert.equal(toLoginAssistantViewState({ ...snapshot, qrImage: 'x'.repeat(1_400_001) }).qrAvailable, false);
 });
+
+test('hides stale QR data and offers retry for terminal login errors', () => {
+	const terminal: LoginSnapshot = {
+		status: 'access-restricted',
+		message: '小红书提示当前网络存在 IP 风险（300012），已停止本次操作。',
+		qrImage: snapshot.qrImage,
+		expiresAt: 1234,
+	};
+	const state = toLoginAssistantViewState(terminal);
+	const html = renderLoginAssistantHtml(terminal);
+	assert.equal(state.qrAvailable, false);
+	assert.equal(state.expiresAt, 0);
+	assert.match(html, /重新尝试登录/);
+	assert.match(html, /let expiresAt = 0;/);
+	assert.match(html, /<button id="show-qr" disabled>/);
+});
