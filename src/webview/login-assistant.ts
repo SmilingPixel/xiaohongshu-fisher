@@ -117,6 +117,13 @@ export class LoginAssistant implements vscode.Disposable {
 			await this.refreshQr();
 			return;
 		}
+		if (value.command === 'open-official-page') {
+			const pageUrl = this.snapshot.pageUrl;
+			if (LOGIN_TERMINAL_STATES.has(this.snapshot.status) && pageUrl?.startsWith('https://')) {
+				await vscode.env.openExternal(vscode.Uri.parse(pageUrl));
+			}
+			return;
+		}
 		this.panel?.dispose();
 	}
 

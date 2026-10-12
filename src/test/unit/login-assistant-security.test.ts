@@ -14,6 +14,7 @@ test('accepts only fixed login assistant message commands', () => {
 	assert.equal(isLoginAssistantMessage({ command: 'ready' }), true);
 	assert.equal(isLoginAssistantMessage({ command: 'show-qr' }), true);
 	assert.equal(isLoginAssistantMessage({ command: 'refresh-qr' }), true);
+	assert.equal(isLoginAssistantMessage({ command: 'open-official-page' }), true);
 	assert.equal(isLoginAssistantMessage({ command: 'close' }), true);
 	assert.equal(isLoginAssistantMessage({ command: 'refresh-qr', url: 'https://attacker.test' }), false);
 	assert.equal(isLoginAssistantMessage({ command: 'open-url' }), false);
@@ -37,6 +38,7 @@ test('hides stale QR data and offers retry for terminal login errors', () => {
 		message: '小红书提示当前网络存在 IP 风险（300012），已停止本次操作。',
 		qrImage: snapshot.qrImage,
 		expiresAt: 1234,
+		pageUrl: 'https://www.xiaohongshu.com/website-login/error?error_code=300012',
 	};
 	const state = toLoginAssistantViewState(terminal);
 	const html = renderLoginAssistantHtml(terminal);
@@ -45,4 +47,5 @@ test('hides stale QR data and offers retry for terminal login errors', () => {
 	assert.match(html, /重新尝试登录/);
 	assert.match(html, /let expiresAt = 0;/);
 	assert.match(html, /<button id="show-qr" disabled>/);
+	assert.match(html, /在官方页面继续处理/);
 });

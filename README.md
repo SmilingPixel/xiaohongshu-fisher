@@ -6,7 +6,7 @@
 
 1. 在 Activity Bar 打开“小红书”。
 2. 首次使用时运行命令面板中的“打开小红书登录页”。桌面环境默认打开插件启动的独立可见浏览器窗口；Remote SSH、容器或无图形环境可将 `xiaohongshu-fisher.browserMode` 设置为 `headless`，然后在 VS Code 的登录辅助页扫描官方二维码。
-3. 返回 VS Code，在“推荐”或“发现”视图标题栏选择刷新；在“搜索结果”视图运行“小红书: 搜索笔记”。
+3. 返回 VS Code，在“推荐”或“发现”视图标题栏选择刷新；在“搜索结果”视图运行“xiaohongshu-fisher: 搜索小红书笔记”。
 4. 选择笔记打开内置阅读页。阅读页也提供“在浏览器中打开”入口。
 
 若缺少 Playwright Chromium，运行命令面板中的“安装 Playwright Chromium”。该命令会在 VS Code 终端中启动安装流程；Linux 下同时安装系统依赖，可能需要 sudo 权限，不会在扩展激活时静默下载浏览器。安装完成后重新打开登录页或刷新列表。
@@ -19,7 +19,7 @@
 
 - 登录只在小红书官方网页中由用户自行完成；扩展不收集账号密码或验证码。
 - 登录会话保存在 VS Code 扩展全局存储目录下的独立浏览器 profile，不读取系统默认浏览器数据，也不写入工作区设置。
-- 使用“小红书: 清除小红书会话”关闭浏览器并删除插件保存的 profile。卸载扩展前建议先运行此命令。
+- 使用“xiaohongshu-fisher: 清除小红书会话”关闭浏览器并删除插件保存的 profile。卸载扩展前建议先运行此命令。
 - 笔记正文只用于当前阅读页，不保存到工作区或持久缓存。扩展只执行用户触发的只读浏览、搜索和详情读取。
 - 页面内容来自小红书网页，网页结构和可读栏目可能变化。遇到登录验证、访问限制或解析失败时，请在官方页面处理或稍后重试；扩展不会自动处理验证或规避访问限制。
 
@@ -34,14 +34,14 @@
 
 | 命令 | 作用 |
 | --- | --- |
-| 小红书: 刷新推荐 | 重新读取推荐列表 |
-| 小红书: 刷新发现 | 重新读取发现列表 |
-| 小红书: 搜索笔记 | 输入关键词搜索 |
-| 小红书: 加载更多 | 继续读取当前列表 |
-| 小红书: 打开小红书登录页 | 打开独立的官方网页会话 |
-| 小红书: 刷新小红书登录二维码 | 在无头模式下请求新的官方二维码 |
-| 小红书: 安装 Playwright Chromium | 在终端安装浏览器运行时，Linux 下同时安装系统依赖 |
-| 小红书: 清除小红书会话 | 删除扩展专属浏览器 profile |
+| xiaohongshu-fisher: 刷新推荐 | 重新读取推荐列表 |
+| xiaohongshu-fisher: 刷新发现 | 重新读取发现列表 |
+| xiaohongshu-fisher: 搜索小红书笔记 | 输入关键词搜索 |
+| xiaohongshu-fisher: 加载更多 | 继续读取当前列表 |
+| xiaohongshu-fisher: 打开小红书登录页 | 打开独立的官方网页会话 |
+| xiaohongshu-fisher: 刷新小红书登录二维码 | 在无头模式下请求新的官方二维码 |
+| xiaohongshu-fisher: 安装 Playwright Chromium | 在终端安装浏览器运行时，Linux 下同时安装系统依赖 |
+| xiaohongshu-fisher: 清除小红书会话 | 删除插件专属浏览器 profile |
 
 ## 开发
 
@@ -53,6 +53,26 @@ pnpm run test:unit
 ```
 
 完整 `pnpm test` 还需要可启动 VS Code Electron 的图形环境。
+
+## 打包与安装 VSIX
+
+使用 VS Code 官方的 `vsce` 工具可以把扩展打包为可分发的 `.vsix` 文件。
+
+```sh
+pnpm install
+pnpm run compile
+pnpm run lint
+pnpm run test:unit
+vsce package
+```
+
+打包成功后，仓库根目录会生成类似 `xiaohongshu-fisher-0.0.1.vsix` 的文件。可以在 VS Code 的扩展视图中选择“从 VSIX 安装…”，或使用命令行安装：
+
+```sh
+code --install-extension xiaohongshu-fisher-0.0.1.vsix
+```
+
+发布相关命令和完整要求请参考 [Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)。
 
 ## 浏览器故障排查
 
