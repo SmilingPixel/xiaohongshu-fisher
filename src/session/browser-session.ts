@@ -24,6 +24,8 @@ export interface LoginSnapshot {
 	readonly message: string;
 	readonly qrImage?: string;
 	readonly expiresAt: number;
+	/** Trusted official page URL for manual recovery after a terminal login state. */
+	readonly pageUrl?: string;
 }
 
 type LoginSnapshotListener = (snapshot: LoginSnapshot) => void;
@@ -369,13 +371,14 @@ export class BrowserSession implements vscode.Disposable {
 			message: detection.message,
 			qrImage: this.loginImage,
 			expiresAt: this.loginExpiresAt,
+			pageUrl: this.isTrustedLoginPage(this.loginPage?.url() ?? '') ? this.loginPage?.url() : undefined,
 		};
 	}
 
 	private emitLoginSnapshot(snapshot: LoginSnapshot): void {
 		if (this.lastLoginSnapshot && this.lastLoginSnapshot.status === snapshot.status &&
 			this.lastLoginSnapshot.message === snapshot.message && this.lastLoginSnapshot.qrImage === snapshot.qrImage &&
-			this.lastLoginSnapshot.expiresAt === snapshot.expiresAt) {return;}
+			this.lastLoginSnapshot.expiresAt === snapshot.expiresAt && this.lastLoginSnapshot.pageUrl === snapshot.pageUrl) {return;}
 		this.lastLoginSnapshot = snapshot;
 		for (const listener of this.loginListeners) {listener(snapshot);}
 	}

@@ -44,50 +44,50 @@
     "commands": [
       {
         "command": "xiaohongshu-fisher.refreshHomeFeed",
-        "title": "刷新推荐",
+        "title": "xiaohongshu-fisher: 刷新推荐",
         "icon": "$(refresh)"
       },
       {
         "command": "xiaohongshu-fisher.refreshExploreFeed",
-        "title": "刷新发现",
+        "title": "xiaohongshu-fisher: 刷新发现",
         "icon": "$(refresh)"
       },
       {
         "command": "xiaohongshu-fisher.searchNotes",
-        "title": "搜索小红书笔记",
+        "title": "xiaohongshu-fisher: 搜索小红书笔记",
         "icon": "$(search)"
       },
       {
         "command": "xiaohongshu-fisher.loadMore",
-        "title": "加载更多",
+        "title": "xiaohongshu-fisher: 加载更多",
         "icon": "$(more)"
       },
       {
         "command": "xiaohongshu-fisher.openNote",
-        "title": "打开笔记"
+        "title": "xiaohongshu-fisher: 打开笔记"
       },
       {
         "command": "xiaohongshu-fisher.openInBrowser",
-        "title": "在浏览器中打开",
+        "title": "xiaohongshu-fisher: 在浏览器中打开",
         "icon": "$(link-external)"
       },
       {
         "command": "xiaohongshu-fisher.openLogin",
-        "title": "打开小红书登录页",
+        "title": "xiaohongshu-fisher: 打开小红书登录页",
         "icon": "$(sign-in)"
       },
       {
         "command": "xiaohongshu-fisher.refreshLoginQr",
-        "title": "刷新小红书登录二维码"
+        "title": "xiaohongshu-fisher: 刷新小红书登录二维码"
       },
       {
         "command": "xiaohongshu-fisher.installBrowserRuntime",
-        "title": "安装 Playwright Chromium",
+        "title": "xiaohongshu-fisher: 安装 Playwright Chromium",
         "icon": "$(cloud-download)"
       },
       {
         "command": "xiaohongshu-fisher.clearSession",
-        "title": "清除小红书会话",
+        "title": "xiaohongshu-fisher: 清除小红书会话",
         "icon": "$(trash)"
       }
     ],
