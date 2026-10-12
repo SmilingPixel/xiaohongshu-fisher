@@ -54,6 +54,26 @@ pnpm run test:unit
 
 完整 `pnpm test` 还需要可启动 VS Code Electron 的图形环境。
 
+## 打包与安装 VSIX
+
+使用 VS Code 官方的 `vsce` 工具可以把扩展打包为可分发的 `.vsix` 文件。
+
+```sh
+pnpm install
+pnpm run compile
+pnpm run lint
+pnpm run test:unit
+vsce package
+```
+
+打包成功后，仓库根目录会生成类似 `xiaohongshu-fisher-0.0.1.vsix` 的文件。可以在 VS Code 的扩展视图中选择“从 VSIX 安装…”，或使用命令行安装：
+
+```sh
+code --install-extension xiaohongshu-fisher-0.0.1.vsix
+```
+
+发布相关命令和完整要求请参考 [Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)。
+
 ## 浏览器故障排查
 
 若出现“无法启动无头 Chromium”，可在“输出”面板选择 **Xiaohongshu Fisher**，查看启动模式、平台、错误类别和缺少的动态库名称。
