@@ -56,23 +56,29 @@ pnpm run test:unit
 
 ## 打包与安装 VSIX
 
-使用 VS Code 官方的 `vsce` 工具可以把扩展打包为可分发的 `.vsix` 文件。
+通过 pnpm 使用仓库中已锁定版本的 `vsce` 工具打包。更新仓库后，即使之前已经安装过依赖，也请重新运行 `pnpm install`，使本地依赖布局与仓库配置保持一致。
 
 ```sh
 pnpm install
 pnpm run compile
 pnpm run lint
 pnpm run test:unit
-vsce package
+pnpm run package
 ```
 
-打包成功后，仓库根目录会生成类似 `xiaohongshu-fisher-0.0.1.vsix` 的文件。可以在 VS Code 的扩展视图中选择“从 VSIX 安装…”，或使用命令行安装：
+打包时会自动编译扩展并运行 `test:package`，在仓库外的临时目录中验证待打包的 Playwright 文件能否独立加载。由于 `vsce` 收集依赖时无法保留 pnpm 默认布局中的符号链接关系，仓库通过 `pnpm-workspace.yaml` 的 `nodeLinker: hoisted` 配置使用平铺依赖布局。VSIX 解压后必须能够正常找到 `playwright` 和 `playwright-core`，因此不要使用 `--no-dependencies` 打包。
+
+打包成功后，仓库根目录会生成 `xiaohongshu-fisher-0.0.1.vsix`。可以在 VS Code 扩展视图中选择“从 VSIX 安装…”，或使用以下命令覆盖安装旧版本：
 
 ```sh
-code --install-extension xiaohongshu-fisher-0.0.1.vsix
+code --install-extension xiaohongshu-fisher-0.0.1.vsix --force
 ```
 
-发布相关命令和完整要求请参考 [Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)。
+覆盖安装后，请重新加载 VS Code 窗口。发布相关命令和完整要求请参考[扩展发布文档](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)。
+
+## 扩展激活故障排查
+
+若安装 VSIX 后出现 `command 'xiaohongshu-fisher.refreshHomeFeed' not found`，请在“输出 → Log (Extension Host)”查看激活错误。若提示找不到 `playwright` 或 `playwright-core`，请按上面的步骤重新安装依赖、打包、覆盖安装 VSIX 并重新加载窗口。扩展在激活前加载这些模块；缺少模块时，所有命令都无法注册，安装 Chromium 不能修复这个问题。
 
 ## 浏览器故障排查
 

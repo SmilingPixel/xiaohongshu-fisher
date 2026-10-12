@@ -15,7 +15,7 @@ const commandIds = [
 ];
 
 suite('Extension Test Suite', () => {
-	const extension = vscode.extensions.getExtension('xiaohongshu-fisher');
+	const extension = vscode.extensions.getExtension('SmilingPixel.xiaohongshu-fisher');
 	assert.ok(extension);
 
 	test('activates and registers each contributed command', async () => {

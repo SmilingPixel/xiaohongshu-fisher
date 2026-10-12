@@ -10,6 +10,7 @@ docs/**
 .gitignore
 .npmrc
 pnpm-lock.yaml
+pnpm-workspace.yaml
 AGENTS.md
 CHANGELOG.md
 .yarnrc
