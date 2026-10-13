@@ -5,13 +5,13 @@
 ## 使用
 
 1. 在 Activity Bar 打开“小红书”。
-2. 首次使用时运行命令面板中的“打开小红书登录页”。桌面环境默认打开插件启动的独立可见浏览器窗口；Remote SSH、容器或无图形环境可将 `xiaohongshu-fisher.browserMode` 设置为 `headless`，然后在 VS Code 的登录辅助页扫描官方二维码。
+2. 首次使用时运行命令面板中的“打开小红书扫码登录”。扩展始终在后台启动独立的无头 Chromium；在 VS Code 登录辅助页选择“在编辑器中显示二维码”，然后用手机扫码确认。
 3. 返回 VS Code，在“推荐”或“发现”视图标题栏选择刷新；在“搜索结果”视图运行“xiaohongshu-fisher: 搜索小红书笔记”。
 4. 选择笔记打开内置阅读页。阅读页也提供“在浏览器中打开”入口。
 
 若缺少 Playwright Chromium，运行命令面板中的“安装 Playwright Chromium”。该命令会在 VS Code 终端中启动安装流程；Linux 下同时安装系统依赖，可能需要 sudo 权限，不会在扩展激活时静默下载浏览器。安装完成后重新打开登录页或刷新列表。
 
-浏览器模式可在设置中选择：`auto` 会根据 `DISPLAY`/Wayland 环境选择可见或无头模式，`visible` 强制使用窗口，`headless` 适合远程服务器。无头登录只显示官方页面二维码的短时截图，不保存截图，也不会把 Cookie 发送到 WebView。
+扩展使用无头 Chromium；登录辅助页提供临时二维码查看入口，不保存截图，也不会把 Cookie 发送到 WebView。
 
 使用 Remote SSH 或容器时，请检查运行扩展的远程主机或容器所使用的网络；本地电脑的网络可能与其不同。若官方页面提示当前网络存在 IP 风险，扩展会停止本次操作并等待手动重试，不会自动绕过平台限制。
 
@@ -21,11 +21,11 @@
 - 登录会话保存在 VS Code 扩展全局存储目录下的独立浏览器 profile，不读取系统默认浏览器数据，也不写入工作区设置。
 - 使用“xiaohongshu-fisher: 清除小红书会话”关闭浏览器并删除插件保存的 profile。卸载扩展前建议先运行此命令。
 - 笔记正文只用于当前阅读页，不保存到工作区或持久缓存。扩展只执行用户触发的只读浏览、搜索和详情读取。
-- 页面内容来自小红书网页，网页结构和可读栏目可能变化。遇到登录验证、访问限制或解析失败时，请在官方页面处理或稍后重试；扩展不会自动处理验证或规避访问限制。
+- 页面内容来自小红书网页，网页结构和可读栏目可能变化。遇到登录验证、访问限制或解析失败时，请查看官方提示并稍后手动重试；扩展不会自动处理验证或规避访问限制。
 
 ## 运行要求与限制
 
-- 需要桌面版 VS Code 和 Playwright Chromium。无头模式面向 VS Code Remote SSH、容器或无图形 Linux，但不同服务器的 Chromium 系统依赖仍需单独安装和验证。
+- 需要桌面版 VS Code 和 Playwright Chromium，支持 VS Code Remote SSH 和容器；不同服务器的 Chromium 系统依赖仍需单独安装和验证。
 - 本版本尚未完成真实小红书账号下的端到端验证。推荐、发现、搜索和详情能否读取取决于当前网页行为、登录状态和账号可见内容。
 - “发现”视图的网页数据映射仍需真实浏览器验证；若平台页面返回的数据结构变化，相关栏目可能暂不可用。
 - 本扩展为社区工具，不代表小红书官方产品。请遵守平台规则并自行判断使用方式。
@@ -38,8 +38,8 @@
 | xiaohongshu-fisher: 刷新发现 | 重新读取发现列表 |
 | xiaohongshu-fisher: 搜索小红书笔记 | 输入关键词搜索 |
 | xiaohongshu-fisher: 加载更多 | 继续读取当前列表 |
-| xiaohongshu-fisher: 打开小红书登录页 | 打开独立的官方网页会话 |
-| xiaohongshu-fisher: 刷新小红书登录二维码 | 在无头模式下请求新的官方二维码 |
+| xiaohongshu-fisher: 打开小红书扫码登录 | 在 VS Code 登录辅助页启动无头扫码流程 |
+| xiaohongshu-fisher: 刷新小红书登录二维码 | 在登录辅助页请求新的官方二维码 |
 | xiaohongshu-fisher: 安装 Playwright Chromium | 在终端安装浏览器运行时，Linux 下同时安装系统依赖 |
 | xiaohongshu-fisher: 清除小红书会话 | 删除插件专属浏览器 profile |
 
@@ -82,11 +82,10 @@ code --install-extension xiaohongshu-fisher-0.0.1.vsix --force
 
 ## 浏览器故障排查
 
-若出现“无法启动无头 Chromium”，可在“输出”面板选择 **Xiaohongshu Fisher**，查看启动模式、平台、错误类别和缺少的动态库名称。
+若出现“无法启动无头 Chromium”，可在“输出”面板选择 **Xiaohongshu Fisher**，查看平台、错误类别和缺少的动态库名称。
 
-- **缺少系统依赖**（如 `libatk-1.0.so.0`）：运行命令面板中的“安装 Playwright Chromium”。在本仓库开发时，也可在仓库目录执行 `pnpm exec playwright install-deps chromium`，只安装系统依赖。无头模式同样需要这些库。
-- **缺少浏览器运行时**：运行“安装 Playwright Chromium”。Playwright 的无头模式使用独立的 headless shell，仅安装可见 Chromium 并不一定足够。
-- **图形显示不可用**：无图形服务器应设置 `xiaohongshu-fisher.browserMode` 为 `headless`，然后重新加载 VS Code 窗口。
+- **缺少系统依赖**（如 `libatk-1.0.so.0`）：运行命令面板中的“安装 Playwright Chromium”。在本仓库开发时，也可在仓库目录执行 `pnpm exec playwright install-deps chromium`，只安装系统依赖。
+- **缺少浏览器运行时**：运行“安装 Playwright Chromium”，安装扩展使用的 Chromium headless shell。
 - **沙箱、目录权限或会话占用**：根据具体错误检查主机或容器权限，或关闭占用同一会话的浏览器/VS Code 窗口后重试。
 
 Remote SSH、Dev Container 等场景需要在**运行扩展的远程主机或容器内**安装依赖；在本地电脑安装不会修复远程启动失败。Linux 系统依赖通过系统包管理器安装；没有 sudo 权限时，请让管理员安装或将依赖加入容器镜像。
