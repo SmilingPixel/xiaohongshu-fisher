@@ -3,14 +3,11 @@ import path from 'node:path';
 import type { BrowserContext, Page } from 'playwright';
 import { chromium } from 'playwright';
 import * as vscode from 'vscode';
-import { SourceError } from '../models/source-error';
-import { resolveBrowserMode, type BrowserMode, type ResolvedBrowserMode } from './browser-mode';
 import { diagnoseBrowserStartup } from './browser-startup';
 import { detectLoginState, type LoginDetection, type LoginStatus } from './login-state';
 import { classifyOfficialErrorRedirect, type OfficialPageError } from '../sources/official-page-error';
 import type { ExtensionLogger } from '../logging';
 
-const HOME_URL = 'https://www.xiaohongshu.com/';
 const LOGIN_URL = 'https://www.xiaohongshu.com/login';
 const PROFILE_DIRECTORY = 'browser-profile';
 const LOGIN_POLL_INTERVAL = 2_000;
@@ -24,18 +21,18 @@ export interface LoginSnapshot {
 	readonly message: string;
 	readonly qrImage?: string;
 	readonly expiresAt: number;
-	/** Trusted official page URL for manual recovery after a terminal login state. */
+	/** Trusted official page URL for viewing errors externally; external sessions are separate. */
 	readonly pageUrl?: string;
 }
 
 type LoginSnapshotListener = (snapshot: LoginSnapshot) => void;
 
+/** Owns the persistent headless profile used by page sources and the QR login assistant. */
 export class BrowserSession implements vscode.Disposable {
 	private context?: BrowserContext;
 	private opening?: Promise<BrowserContext>;
 	private loginPage?: Page;
 	private readonly profilePath: string;
-	private readonly mode: ResolvedBrowserMode;
 	private readonly loginListeners = new Set<LoginSnapshotListener>();
 	private loginPoll?: NodeJS.Timeout;
 	private loginPollInFlight = false;
@@ -45,18 +42,8 @@ export class BrowserSession implements vscode.Disposable {
 	private lastLoginSnapshot?: LoginSnapshot;
 	private loginGeneration = 0;
 
-	constructor(storageUri: vscode.Uri, configuredMode: BrowserMode = 'auto', private readonly logger?: ExtensionLogger) {
+	constructor(storageUri: vscode.Uri, private readonly logger?: ExtensionLogger) {
 		this.profilePath = path.join(storageUri.fsPath, PROFILE_DIRECTORY);
-		this.mode = resolveBrowserMode(configuredMode, {
-			display: process.env.DISPLAY,
-			waylandDisplay: process.env.WAYLAND_DISPLAY,
-			remote: Boolean(vscode.env.remoteName),
-			platform: process.platform,
-		});
-	}
-
-	getMode(): ResolvedBrowserMode {
-		return this.mode;
 	}
 
 	onLoginSnapshot(listener: LoginSnapshotListener): vscode.Disposable {
@@ -64,24 +51,7 @@ export class BrowserSession implements vscode.Disposable {
 		return { dispose: () => this.loginListeners.delete(listener) };
 	}
 
-	async openLogin(): Promise<void> {
-		this.logger?.info('Opening official login page in %s browser.', this.mode);
-		const context = await this.getContext();
-		const page = await this.getLoginPage(context);
-		this.stopLoginPolling();
-		this.loginGeneration++;
-		this.loginExpiresAt = 0;
-		this.loginImage = undefined;
-		this.loginImageCapturedAt = 0;
-		this.lastLoginSnapshot = undefined;
-		await page.goto(HOME_URL, { waitUntil: 'domcontentloaded' });
-		if (this.mode === 'visible') {await page.bringToFront();}
-	}
-
-	async startHeadlessLogin(): Promise<LoginSnapshot> {
-		if (this.mode !== 'headless') {
-			throw new SourceError('browser-startup', '当前浏览器模式不是无头模式。', false);
-		}
+	async startLogin(): Promise<LoginSnapshot> {
 		const page = await this.getLoginPage(await this.getContext());
 		this.stopLoginPolling();
 		const generation = ++this.loginGeneration;
@@ -91,7 +61,7 @@ export class BrowserSession implements vscode.Disposable {
 		this.loginImageCapturedAt = 0;
 		this.lastLoginSnapshot = undefined;
 		const snapshot = await this.waitForLoginSnapshot(page, generation);
-		this.logger?.info('Headless login started; initial state: %s.', snapshot.status);
+		this.logger?.info('QR login started; initial state: %s.', snapshot.status);
 		this.emitLoginSnapshot(snapshot);
 		if (this.canContinueLogin(snapshot.status)) {
 			this.startLoginPolling();
@@ -99,10 +69,7 @@ export class BrowserSession implements vscode.Disposable {
 		return snapshot;
 	}
 
-	async refreshHeadlessLoginQr(): Promise<LoginSnapshot> {
-		if (this.mode !== 'headless') {
-			throw new SourceError('browser-startup', '当前浏览器模式不是无头模式。', false);
-		}
+	async refreshLoginQr(): Promise<LoginSnapshot> {
 		const page = await this.getLoginPage(await this.getContext());
 		this.stopLoginPolling();
 		const generation = ++this.loginGeneration;
@@ -111,7 +78,7 @@ export class BrowserSession implements vscode.Disposable {
 		this.loginImageCapturedAt = 0;
 		await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
 		const snapshot = await this.waitForLoginSnapshot(page, generation);
-		this.logger?.info('Headless login QR refreshed; state: %s.', snapshot.status);
+		this.logger?.info('Login QR refreshed; state: %s.', snapshot.status);
 		this.emitLoginSnapshot(snapshot);
 		if (this.canContinueLogin(snapshot.status)) {
 			this.startLoginPolling();
@@ -384,16 +351,15 @@ export class BrowserSession implements vscode.Disposable {
 	}
 
 	private async launchContext(): Promise<BrowserContext> {
-		this.logger?.info('Launching persistent %s Chromium browser.', this.mode);
+		this.logger?.info('Launching persistent headless Chromium browser.');
 		try {
 			await mkdir(this.profilePath, { recursive: true });
-			// Playwright selects a different executable for headless mode. Let it validate
-			// that runtime instead of checking chromium.executablePath() (the headed binary).
-			return await chromium.launchPersistentContext(this.profilePath, { headless: this.mode === 'headless' });
+			// Let Playwright validate the headless shell runtime during launch.
+			return await chromium.launchPersistentContext(this.profilePath, { headless: true });
 		} catch (error) {
-			const failure = diagnoseBrowserStartup(error, this.mode);
-			this.logger?.error('Chromium launch failed (mode: %s, platform: %s, category: %s, missing libraries: %s).',
-				this.mode, process.platform, failure.category, failure.missingLibraries.join(', ') || 'none detected');
+			const failure = diagnoseBrowserStartup(error);
+			this.logger?.error('Chromium launch failed (platform: %s, category: %s, missing libraries: %s).',
+				process.platform, failure.category, failure.missingLibraries.join(', ') || 'none detected');
 			throw failure.error;
 		}
 	}

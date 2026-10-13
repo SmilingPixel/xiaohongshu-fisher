@@ -21,7 +21,6 @@ function makeSource(overrides: Partial<ContentSource> = {}): ContentSource {
 	searchNotes: (...args) => overrides.searchNotes?.(...args) ?? base.searchNotes(...args),
 		getNoteDetail: (...args) => overrides.getNoteDetail?.(...args) ?? base.getNoteDetail(...args),
 		getSessionStatus: () => overrides.getSessionStatus?.() ?? base.getSessionStatus(),
-		openLogin: () => overrides.openLogin?.() ?? base.openLogin(),
 		dispose: () => overrides.dispose?.() ?? base.dispose(),
 	};
 }

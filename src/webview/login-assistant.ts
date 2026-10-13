@@ -27,15 +27,15 @@ export class LoginAssistant implements vscode.Disposable {
 	async open(): Promise<void> {
 		if (this.attemptInFlight) {return;}
 		this.attemptInFlight = true;
-		this.logger?.info('Opening headless login assistant.');
+		this.logger?.info('Opening QR login assistant.');
 		const panel = this.getPanel();
 		this.snapshot = INITIAL_SNAPSHOT;
 		this.webviewReady = false;
 		panel.webview.html = renderLoginAssistantHtml(this.snapshot);
 		try {
-			this.update(await this.session.startHeadlessLogin());
+			this.update(await this.session.startLogin());
 		} catch (error) {
-			this.logger?.warn('Headless login assistant failed to start: %s.', error instanceof Error ? error.name : 'unknown error');
+			this.logger?.warn('QR login assistant failed to start: %s.', error instanceof Error ? error.name : 'unknown error');
 			this.update({
 				status: 'page-error',
 				message: error instanceof Error ? error.message : '无法启动无头登录流程。',
@@ -59,7 +59,7 @@ export class LoginAssistant implements vscode.Disposable {
 		}
 		this.update({ status: 'loading', message: '正在向官方页面请求新二维码…', expiresAt: 0 });
 		try {
-			this.update(await this.session.refreshHeadlessLoginQr());
+			this.update(await this.session.refreshLoginQr());
 		} catch (error) {
 			this.update({
 				status: 'page-error',

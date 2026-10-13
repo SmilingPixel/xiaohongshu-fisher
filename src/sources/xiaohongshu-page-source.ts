@@ -61,10 +61,6 @@ export class XiaohongshuPageSource implements ContentSource {
 		return 'unknown';
 	}
 
-	openLogin(): Promise<void> {
-		return this.session.openLogin();
-	}
-
 	async dispose(): Promise<void> {
 		await Promise.all([...this.streams.keys()].map(key => this.closeStream(key)));
 		this.noteTokens.clear();

@@ -4,8 +4,8 @@ import { formatLogMessage } from '../../logging-format';
 
 test('formats printf-style logger placeholders before output', () => {
 	assert.equal(
-		formatLogMessage('Extension activated (browser mode: %s, remote: %s).', ['headless', true]),
-		'Extension activated (browser mode: headless, remote: true).',
+		formatLogMessage('Operation completed (operation: %s, success: %s).', ['refresh', true]),
+		'Operation completed (operation: refresh, success: true).',
 	);
 });
 
