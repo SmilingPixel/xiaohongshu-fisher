@@ -47,5 +47,6 @@ test('hides stale QR data and offers retry for terminal login errors', () => {
 	assert.match(html, /重新尝试登录/);
 	assert.match(html, /let expiresAt = 0;/);
 	assert.match(html, /<button id="show-qr" disabled>/);
-	assert.match(html, /在官方页面继续处理/);
+	assert.match(html, /在浏览器中查看官方页面/);
+	assert.match(html, /外部浏览器操作不会同步到扩展会话/);
 });
