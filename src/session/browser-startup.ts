@@ -20,7 +20,7 @@ export function diagnoseBrowserStartup(error: unknown, mode: ResolvedBrowserMode
 
 	if (/Executable doesn't exist/i.test(reason)) {
 		category = 'runtime-missing';
-		detail = '缺少当前模式所需的 Playwright Chromium 运行时，请运行“安装 Playwright Chromium”后重试。';
+		detail = '缺少当前模式所需的 Playwright Chromium 运行时，请运行“安装 Playwright Chromium”后重试。若已经安装，请尝试重启 extension。';
 	} else if (/Host system is missing dependencies|Missing libraries:|error while loading shared libraries:/i.test(reason)) {
 		category = 'dependencies';
 		for (const match of reason.matchAll(/error while loading shared libraries:\s*(lib[A-Za-z0-9_+.-]{1,100}\.so(?:\.\d+)*)\s*:/g)) {

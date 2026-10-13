@@ -1,0 +1,6 @@
+# vsce discovers dependencies through npm and needs paths that remain resolvable
+# after VSIX extraction; pnpm's isolated symlink layout does not survive packaging.
+nodeLinker: hoisted
+
+allowBuilds:
+  '@vscode/vsce-sign': false
