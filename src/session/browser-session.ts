@@ -4,373 +4,170 @@ import type { BrowserContext, Page } from 'playwright';
 import { chromium } from 'playwright';
 import * as vscode from 'vscode';
 import { diagnoseBrowserStartup } from './browser-startup';
-import { detectLoginState, type LoginDetection, type LoginStatus } from './login-state';
+import { detectLoginState, type LoginDetection } from './login-state';
+import { LOGIN_TERMINAL_STATES, type LoginSnapshot, type LoginStatus } from './login-model';
+import { LoginQrObserver } from './login-qr-observer';
+import { renderLoginQrPng } from './login-qr-renderer';
+import type { LoginQrChallenge } from './login-qr';
 import { classifyOfficialErrorRedirect, type OfficialPageError } from '../sources/official-page-error';
 import type { ExtensionLogger } from '../logging';
 
 const LOGIN_URL = 'https://www.xiaohongshu.com/login';
 const PROFILE_DIRECTORY = 'browser-profile';
 const LOGIN_POLL_INTERVAL = 2_000;
-const LOGIN_IMAGE_REFRESH_INTERVAL = 10_000;
-const LOGIN_QR_LIFETIME = 2 * 60 * 1_000;
+const LOGIN_QR_LIFETIME = 120_000;
 const LOGIN_QR_WAIT_TIMEOUT = 15_000;
-const LOGIN_IMAGE_LIMIT = 1_024 * 1_024;
 
-export interface LoginSnapshot {
-	readonly status: LoginStatus;
-	readonly message: string;
-	readonly qrImage?: string;
-	readonly expiresAt: number;
-	/** Trusted official page URL for viewing errors externally; external sessions are separate. */
-	readonly pageUrl?: string;
-}
-
+export type { LoginSnapshot, LoginStatus } from './login-model';
 type LoginSnapshotListener = (snapshot: LoginSnapshot) => void;
 
-/** Owns the persistent headless profile used by page sources and the QR login assistant. */
+/** Owns the persistent browser context and the page that completes the official QR login flow. */
 export class BrowserSession implements vscode.Disposable {
 	private context?: BrowserContext;
 	private opening?: Promise<BrowserContext>;
 	private loginPage?: Page;
+	private observer?: LoginQrObserver;
 	private readonly profilePath: string;
 	private readonly loginListeners = new Set<LoginSnapshotListener>();
 	private loginPoll?: NodeJS.Timeout;
 	private loginPollInFlight = false;
 	private loginExpiresAt = 0;
-	private loginImage?: string;
-	private loginImageCapturedAt = 0;
+	private loginPng?: Uint8Array;
+	private loginRevision = 0;
+	private lastChallenge?: LoginQrChallenge;
 	private lastLoginSnapshot?: LoginSnapshot;
 	private loginGeneration = 0;
 
-	constructor(storageUri: vscode.Uri, private readonly logger?: ExtensionLogger) {
-		this.profilePath = path.join(storageUri.fsPath, PROFILE_DIRECTORY);
-	}
+	constructor(storageUri: vscode.Uri, private readonly logger?: ExtensionLogger) { this.profilePath = path.join(storageUri.fsPath, PROFILE_DIRECTORY); }
+	onLoginSnapshot(listener: LoginSnapshotListener): vscode.Disposable { this.loginListeners.add(listener); return { dispose: () => this.loginListeners.delete(listener) }; }
 
-	onLoginSnapshot(listener: LoginSnapshotListener): vscode.Disposable {
-		this.loginListeners.add(listener);
-		return { dispose: () => this.loginListeners.delete(listener) };
-	}
-
-	async startLogin(): Promise<LoginSnapshot> {
-		const page = await this.getLoginPage(await this.getContext());
-		this.stopLoginPolling();
-		const generation = ++this.loginGeneration;
-		await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
-		this.loginExpiresAt = 0;
-		this.loginImage = undefined;
-		this.loginImageCapturedAt = 0;
-		this.lastLoginSnapshot = undefined;
-		const snapshot = await this.waitForLoginSnapshot(page, generation);
-		this.logger?.info('QR login started; initial state: %s.', snapshot.status);
-		this.emitLoginSnapshot(snapshot);
-		if (this.canContinueLogin(snapshot.status)) {
-			this.startLoginPolling();
-		}
-		return snapshot;
-	}
-
-	async refreshLoginQr(): Promise<LoginSnapshot> {
-		const page = await this.getLoginPage(await this.getContext());
-		this.stopLoginPolling();
-		const generation = ++this.loginGeneration;
-		this.loginExpiresAt = 0;
-		this.loginImage = undefined;
-		this.loginImageCapturedAt = 0;
-		await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
-		const snapshot = await this.waitForLoginSnapshot(page, generation);
-		this.logger?.info('Login QR refreshed; state: %s.', snapshot.status);
-		this.emitLoginSnapshot(snapshot);
-		if (this.canContinueLogin(snapshot.status)) {
-			this.startLoginPolling();
-		}
-		return snapshot;
-	}
+	async startLogin(): Promise<LoginSnapshot> { return this.beginLoginAttempt('start'); }
+	async refreshLoginQr(): Promise<LoginSnapshot> { return this.beginLoginAttempt('refresh'); }
 
 	stopLogin(): void {
-		this.logger?.debug('Stopping login polling and closing login page.');
-		this.stopLoginPolling();
 		this.loginGeneration++;
-		this.loginExpiresAt = 0;
-		this.loginImage = undefined;
-		this.loginImageCapturedAt = 0;
-		this.lastLoginSnapshot = undefined;
-		const page = this.loginPage;
-		this.loginPage = undefined;
-		if (page) {void page.close().catch(() => undefined);}
-	}
-
-	async openPage(): Promise<Page> {
-		return (await this.getContext()).newPage();
-	}
-
-	async clear(): Promise<void> {
-		this.logger?.info('Clearing extension-owned browser session.');
-		this.stopLogin();
-		await this.closeContext();
-		await rm(this.profilePath, { recursive: true, force: true });
-	}
-
-	async dispose(): Promise<void> {
-		this.logger?.debug('Disposing browser session.');
-		this.stopLogin();
-		await this.closeContext();
-		this.loginListeners.clear();
-	}
-
-	private async getContext(): Promise<BrowserContext> {
-		if (this.context && !this.context.browser()?.isConnected()) {
-			this.context = undefined;
-		}
-		if (this.context) {return this.context;}
-		if (!this.opening) {
-			this.opening = this.launchContext();
-		}
-		try {
-			this.context = await this.opening;
-			this.context.on('close', () => {
-				this.context = undefined;
-				this.loginPage = undefined;
-			});
-			return this.context;
-		} finally {
-			this.opening = undefined;
-		}
-	}
-
-	private async getLoginPage(context: BrowserContext): Promise<Page> {
-		if (!this.loginPage || this.loginPage.isClosed()) {
-			this.loginPage = await context.newPage();
-			const page = this.loginPage;
-			page.on('framenavigated', frame => {
-				if (frame !== page.mainFrame() || page !== this.loginPage) {return;}
-				this.handleLoginNavigation(page, frame.url());
-			});
-		}
-		return this.loginPage;
-	}
-
-	private startLoginPolling(): void {
 		this.stopLoginPolling();
-		this.loginPoll = setInterval(() => { void this.pollLogin(); }, LOGIN_POLL_INTERVAL);
+		this.observer?.dispose(); this.observer = undefined;
+		this.clearLoginMaterial();
+		const page = this.loginPage; this.loginPage = undefined;
+		if (page) { void page.close().catch(() => undefined); }
+	}
+	async openPage(): Promise<Page> { return (await this.getContext()).newPage(); }
+	async clear(): Promise<void> { this.logger?.info('Clearing extension-owned browser session.'); this.stopLogin(); await this.closeContext(); await rm(this.profilePath, { recursive: true, force: true }); }
+	async dispose(): Promise<void> { this.stopLogin(); await this.closeContext(); this.loginListeners.clear(); }
+
+	private async beginLoginAttempt(operation: 'start' | 'refresh'): Promise<LoginSnapshot> {
+		const generation = ++this.loginGeneration;
+		this.stopLoginPolling(); this.observer?.dispose(); this.observer = undefined; this.clearLoginMaterial();
+		const oldPage = this.loginPage; this.loginPage = undefined;
+		if (oldPage) { await oldPage.close().catch(() => undefined); }
+		this.lastLoginSnapshot = undefined;
+		this.emitLoginSnapshot(this.toLoginSnapshot({ status: 'loading', message: '正在启动无头浏览器并打开官方登录页…' }));
+		const context = await this.getContext();
+		if (generation !== this.loginGeneration) {return this.toLoginSnapshot({ status: 'loading', message: '登录操作已取消。' });}
+		const page = await context.newPage(); this.loginPage = page;
+		this.observer = new LoginQrObserver(page,
+			challenge => { void this.acceptChallenge(challenge, page, generation); },
+			failure => { this.logger?.debug('QR creation response was not usable (reason: %s).', failure); });
+		page.on('framenavigated', frame => { if (frame === page.mainFrame() && page === this.loginPage) {this.handleLoginNavigation(page, frame.url(), generation);} });
+		try {
+			await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
+			const snapshot = await this.waitForLoginSnapshot(page, generation);
+			this.logger?.info('QR login %s; initial state: %s.', operation, snapshot.status);
+			if (this.canContinueLogin(snapshot.status)) {this.startLoginPolling(generation);}
+			return snapshot;
+		} catch (error) {
+			if (generation !== this.loginGeneration) {return this.toLoginSnapshot({ status: 'loading', message: '登录操作已取消。' });}
+			this.publishTerminal({ status: 'page-error', message: '暂时无法打开官方登录页，请检查网络后重试。' }, 'login-navigation');
+			throw error;
+		}
 	}
 
-	private stopLoginPolling(): void {
-		if (this.loginPoll) {clearInterval(this.loginPoll);}
-		this.loginPoll = undefined;
+	private async acceptChallenge(challenge: LoginQrChallenge, page: Page, generation: number): Promise<void> {
+		if (generation !== this.loginGeneration || page !== this.loginPage || LOGIN_TERMINAL_STATES.has(this.lastLoginSnapshot?.status ?? 'loading')) {return;}
+		if (this.lastChallenge?.id === challenge.id && this.lastChallenge.code === challenge.code) {return;}
+		this.lastChallenge = challenge;
+		try {
+			const png = await renderLoginQrPng(challenge);
+			if (generation !== this.loginGeneration || page !== this.loginPage) {png.fill(0); return;}
+			this.loginPng?.fill(0); this.loginPng = png; this.loginRevision++;
+			if (this.loginExpiresAt === 0) {this.loginExpiresAt = Date.now() + LOGIN_QR_LIFETIME;}
+			this.emitLoginSnapshot(this.toLoginSnapshot({ status: 'waiting-scan', message: '请使用小红书手机客户端扫描二维码并确认登录。' }));
+		} catch {
+			this.publishTerminal({ status: 'qr-unavailable', message: '无法生成登录二维码，请刷新后重试。' }, 'qr-render');
+		}
 	}
 
-	private async pollLogin(): Promise<void> {
-		if (this.loginPollInFlight || !this.loginPage || this.loginPage.isClosed()) {return;}
-		if (this.loginExpiresAt > 0 && Date.now() >= this.loginExpiresAt) {
-			this.logger?.info('Login QR expired.');
-			const detection: LoginDetection = { status: 'expired', message: '二维码已过期，请刷新二维码后重试。' };
-			this.publishTerminal(detection, 'login-poll');
-			return;
+	private startLoginPolling(generation: number): void { this.stopLoginPolling(); this.loginPoll = setInterval(() => { void this.pollLogin(generation); }, LOGIN_POLL_INTERVAL); }
+	private stopLoginPolling(): void { if (this.loginPoll) {clearInterval(this.loginPoll);} this.loginPoll = undefined; }
+
+	private async pollLogin(generation: number): Promise<void> {
+		if (this.loginPollInFlight || generation !== this.loginGeneration || !this.loginPage || this.loginPage.isClosed()) {return;}
+		if (this.loginExpiresAt > 0 && Date.now() >= this.loginExpiresAt && !this.lastLoginSnapshot?.status.includes('logged-in')) {
+			this.publishTerminal({ status: 'qr-unavailable', message: '二维码等待时间已结束，请刷新二维码后重试。' }, 'login-poll'); return;
 		}
 		this.loginPollInFlight = true;
 		try {
-			const shouldRefreshImage = !this.loginImage || Date.now() - this.loginImageCapturedAt >= LOGIN_IMAGE_REFRESH_INTERVAL;
-			const snapshot = await this.captureLoginSnapshot(this.loginPage, shouldRefreshImage, this.loginGeneration);
+			const snapshot = await this.inspectLoginPage(this.loginPage, generation);
 			this.emitLoginSnapshot(snapshot);
-			if (!this.canContinueLogin(snapshot.status)) {
-				this.stopLoginPolling();
-			}
-		} catch (error) {
-			this.logger?.warn('Login polling stopped after page inspection failed: %s.', error instanceof Error ? error.name : 'unknown error');
-			this.stopLoginPolling();
-			this.publishTerminal({ status: 'page-error', message: '暂时无法读取官方登录页，已暂停登录。请检查网络或页面状态后手动重试。' }, 'login-poll');
-		} finally {
-			this.loginPollInFlight = false;
-		}
-	}
-
-	private async captureLoginSnapshot(page: Page, includeImage: boolean, generation: number): Promise<LoginSnapshot> {
-		if (generation !== this.loginGeneration || page !== this.loginPage) {
-			return this.lastLoginSnapshot ?? this.toLoginSnapshot({ status: 'loading', message: '正在读取官方登录页面…' });
-		}
-		const initialUrl = page.url();
-		const redirect = classifyOfficialErrorRedirect(initialUrl);
-		if (redirect) {return this.publishOfficialPageError(redirect, 'login-inspection');}
-		if (!this.isTrustedLoginPage(initialUrl)) {
-			return this.publishTerminal({ status: 'page-error', message: '登录页跳转到了不受支持的地址，已停止读取。请检查官方页面后重新打开登录。' }, 'login-inspection');
-		}
-		let bodyText = '';
-		let bodyReadOutcome: 'empty' | 'nonempty' | 'timeout' | 'failed' = 'empty';
-		try {
-			bodyText = await page.locator('body').innerText({ timeout: 1_500 });
-			bodyReadOutcome = bodyText.trim() ? 'nonempty' : 'empty';
-		} catch (error) {
-			bodyReadOutcome = error instanceof Error && /timeout/i.test(error.name + error.message) ? 'timeout' : 'failed';
-		}
-		if (generation !== this.loginGeneration || page !== this.loginPage) {return this.toLoginSnapshot({ status: 'loading', message: '正在读取官方登录页面…' });}
-		const afterReadError = classifyOfficialErrorRedirect(page.url());
-		if (afterReadError) {return this.publishOfficialPageError(afterReadError, 'login-inspection');}
-		const qrLocator = await this.findQrLocator(page);
-		if (generation !== this.loginGeneration || page !== this.loginPage) {return this.toLoginSnapshot({ status: 'loading', message: '正在读取官方登录页面…' });}
-		const finalUrl = page.url();
-		const finalRedirect = classifyOfficialErrorRedirect(finalUrl);
-		if (finalRedirect) {return this.publishOfficialPageError(finalRedirect, 'login-inspection');}
-		if (!this.isTrustedLoginPage(finalUrl)) {
-			return this.publishTerminal({ status: 'page-error', message: '登录页跳转到了不受支持的地址，已停止读取。请检查官方页面后重新打开登录。' }, 'login-inspection');
-		}
-		const detection = detectLoginState({
-			url: finalUrl,
-			bodyText,
-			hasQr: Boolean(qrLocator),
-			now: Date.now(),
-			expiresAt: this.loginExpiresAt,
-		});
-		if (detection.status !== 'waiting-scan') {
-			this.loginImage = undefined;
-			this.loginImageCapturedAt = 0;
-		} else if (includeImage) {
-			const image = await this.captureQrImage(page, qrLocator);
-			if (generation !== this.loginGeneration || page !== this.loginPage) {return this.toLoginSnapshot({ status: 'loading', message: '正在读取官方登录页面…' });}
-			const afterScreenshotError = classifyOfficialErrorRedirect(page.url());
-			if (afterScreenshotError) {return this.publishOfficialPageError(afterScreenshotError, 'login-inspection');}
-			this.loginImage = image;
-			if (image) {
-				this.loginImageCapturedAt = Date.now();
-				this.loginExpiresAt = this.loginImageCapturedAt + LOGIN_QR_LIFETIME;
-			} else {
-				this.loginImageCapturedAt = 0;
-			}
-		}
-		if (detection.status === 'waiting-scan' && !this.loginImage) {
-			return this.toLoginSnapshot({ status: 'loading', message: '正在读取官方登录二维码…' });
-		}
-		this.logger?.debug('Login page inspection completed (state: %s, body: %s).', detection.status, bodyReadOutcome);
-		return this.toLoginSnapshot(detection);
+			if (!this.canContinueLogin(snapshot.status)) {this.stopLoginPolling();}
+		} catch {
+			this.stopLoginPolling(); this.publishTerminal({ status: 'page-error', message: '暂时无法读取官方登录页，已暂停登录。请检查网络后手动重试。' }, 'login-poll');
+		} finally { this.loginPollInFlight = false; }
 	}
 
 	private async waitForLoginSnapshot(page: Page, generation: number): Promise<LoginSnapshot> {
 		const deadline = Date.now() + LOGIN_QR_WAIT_TIMEOUT;
-		let snapshot = await this.captureLoginSnapshot(page, true, generation);
-		while (Date.now() < deadline && snapshot.status === 'loading') {
-			await new Promise(resolve => setTimeout(resolve, 500));
-			snapshot = await this.captureLoginSnapshot(page, true, generation);
-		}
-		if (snapshot.status === 'loading') {
-			this.logger?.info('Login QR was not available within %d ms.', LOGIN_QR_WAIT_TIMEOUT);
-			return this.toLoginSnapshot({ status: 'qr-unavailable', message: '未能在规定时间内读取二维码，请刷新后重试。' });
-		}
-		return snapshot;
+		let snapshot = await this.inspectLoginPage(page, generation);
+		while (Date.now() < deadline && snapshot.status === 'loading') { await new Promise(resolve => setTimeout(resolve, 300)); snapshot = await this.inspectLoginPage(page, generation); }
+		return snapshot.status === 'loading'
+			? this.publishTerminal({ status: 'qr-unavailable', message: '未能在规定时间内读取二维码，请刷新后重试。' }, 'login-acquisition')
+			: snapshot;
 	}
 
-	private handleLoginNavigation(page: Page, url: string): void {
-		if (url === 'about:blank') {return;}
-		const error = classifyOfficialErrorRedirect(url);
-		if (error) {
-			this.publishOfficialPageError(error, 'login-navigation');
-			return;
-		}
-		if (!this.isTrustedLoginPage(url)) {
-			this.publishTerminal({ status: 'page-error', message: '登录页跳转到了不受支持的地址，已停止读取。请检查官方页面后重新打开登录。' }, 'login-navigation');
-		}
+	private async inspectLoginPage(page: Page, generation: number): Promise<LoginSnapshot> {
+		if (generation !== this.loginGeneration || page !== this.loginPage) {return this.toLoginSnapshot({ status: 'loading', message: '正在读取官方登录页面…' });}
+		const url = page.url(); const redirect = classifyOfficialErrorRedirect(url);
+		if (redirect) {return this.publishOfficialPageError(redirect, 'login-inspection');}
+		let bodyText = '';
+		try { bodyText = await page.locator('body').innerText({ timeout: 1_500 }); } catch { /* transient navigation */ }
+		const detection = detectLoginState({ url, bodyText, hasQr: Boolean(this.loginPng), authenticated: /退出登录/.test(bodyText), now: Date.now(), expiresAt: this.loginExpiresAt });
+		if (detection.status === 'logged-in') {this.clearLoginMaterial();}
+		if (detection.status === 'waiting-scan' && !this.loginPng) {return this.toLoginSnapshot({ status: 'loading', message: '正在等待官方登录二维码…' });}
+		return this.toLoginSnapshot(detection);
 	}
 
-	private publishOfficialPageError(error: OfficialPageError, operation: string): LoginSnapshot {
-		this.logger?.warn('Official page redirect detected (operation: %s, kind: %s, code: %s).', operation, error.kind, error.platformCode ?? 'unknown');
-		return this.publishTerminal({ status: error.kind === 'ip-risk' ? 'access-restricted' : 'page-error', message: error.message }, operation);
+	private handleLoginNavigation(page: Page, url: string, generation: number): void {
+		if (generation !== this.loginGeneration || url === 'about:blank') {return;}
+		const error = classifyOfficialErrorRedirect(url); if (error) {this.publishOfficialPageError(error, 'login-navigation'); return;}
+		if (!this.isTrustedLoginPage(url)) {this.publishTerminal({ status: 'page-error', message: '登录页跳转到了不受支持的地址，已停止读取。请检查官方页面后重新打开登录。' }, 'login-navigation');}
 	}
-
+	private publishOfficialPageError(error: OfficialPageError, operation: string): LoginSnapshot { this.logger?.warn('Official page redirect detected (operation: %s, kind: %s, code: %s).', operation, error.kind, error.platformCode ?? 'unknown'); return this.publishTerminal({ status: error.kind === 'ip-risk' ? 'access-restricted' : 'page-error', message: error.message }, operation); }
 	private publishTerminal(detection: LoginDetection, operation: string): LoginSnapshot {
-		if (this.lastLoginSnapshot?.status === detection.status && this.lastLoginSnapshot.message === detection.message &&
-			!this.lastLoginSnapshot.qrImage && this.lastLoginSnapshot.expiresAt === 0) {
-			return this.lastLoginSnapshot;
-		}
-		this.stopLoginPolling();
-		this.loginGeneration++;
-		this.loginImage = undefined;
-		this.loginImageCapturedAt = 0;
-		this.loginExpiresAt = 0;
-		const snapshot = this.toLoginSnapshot(detection);
-		this.logger?.info('Login attempt stopped (operation: %s, state: %s).', operation, detection.status);
-		this.emitLoginSnapshot(snapshot);
-		return snapshot;
+		this.stopLoginPolling(); this.observer?.dispose(); this.observer = undefined; this.clearLoginMaterial();
+		const page = this.loginPage; this.loginPage = undefined;
+		if (page) {void page.close().catch(() => undefined);}
+		const snapshot = this.toLoginSnapshot(detection); this.logger?.info('Login attempt stopped (operation: %s, state: %s).', operation, detection.status); this.emitLoginSnapshot(snapshot); return snapshot;
 	}
-
-	private canContinueLogin(status: LoginStatus): boolean {
-		return status === 'loading' || status === 'waiting-scan';
-	}
-
-	private async findQrLocator(page: Page): Promise<import('playwright').Locator | undefined> {
-		const selectors = [
-			'img.qrcode-img',
-			'img[alt*="二维码"]',
-			'img[src*="qrcode"]',
-			'img[src*="qr"]',
-			'[class*="qrcode"] img',
-			'[class*="qr-code"] img',
-			'[class*="qrcode"] canvas',
-		];
-		for (const selector of selectors) {
-			const locator = page.locator(selector).first();
-			if (await locator.count() > 0 && await locator.isVisible().catch(() => false)) {return locator;}
-		}
-		return undefined;
-	}
-
-	private isTrustedLoginPage(value: string): boolean {
-		try {
-			const url = new URL(value);
-			return url.protocol === 'https:' && !url.username && !url.password && !url.port && (url.hostname === 'xiaohongshu.com' || url.hostname.endsWith('.xiaohongshu.com'));
-		} catch {
-			return false;
-		}
-	}
-
-	private async captureQrImage(page: Page, locator: import('playwright').Locator | undefined): Promise<string | undefined> {
-		if (!locator) {return undefined;}
-		try {
-			const image = await locator.screenshot({ type: 'png', animations: 'disabled' });
-			if (image.byteLength > LOGIN_IMAGE_LIMIT) {return undefined;}
-			return image.toString('base64');
-		} catch (error) {
-			this.logger?.debug('QR screenshot unavailable: %s.', error instanceof Error ? error.name : 'unknown error');
-			return undefined;
-		}
-	}
-
+	private clearLoginMaterial(): void { this.loginPng?.fill(0); this.loginPng = undefined; this.lastChallenge = undefined; this.loginExpiresAt = 0; this.loginRevision++; }
+	private canContinueLogin(status: LoginStatus): boolean { return status === 'loading' || status === 'waiting-scan'; }
+	private isTrustedLoginPage(value: string): boolean { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password && !url.port && (url.hostname === 'xiaohongshu.com' || url.hostname.endsWith('.xiaohongshu.com')); } catch { return false; } }
 	private toLoginSnapshot(detection: LoginDetection): LoginSnapshot {
-		return {
-			status: detection.status,
-			message: detection.message,
-			qrImage: this.loginImage,
-			expiresAt: this.loginExpiresAt,
-			pageUrl: this.isTrustedLoginPage(this.loginPage?.url() ?? '') ? this.loginPage?.url() : undefined,
-		};
+		const pageUrl = detection.status === 'access-restricted' || detection.status === 'page-error'
+			? 'https://www.xiaohongshu.com/'
+			: undefined;
+		return { status: detection.status, message: detection.message, qrPng: this.loginPng, qrRevision: this.loginRevision, expiresAt: this.loginExpiresAt, pageUrl };
 	}
-
 	private emitLoginSnapshot(snapshot: LoginSnapshot): void {
-		if (this.lastLoginSnapshot && this.lastLoginSnapshot.status === snapshot.status &&
-			this.lastLoginSnapshot.message === snapshot.message && this.lastLoginSnapshot.qrImage === snapshot.qrImage &&
-			this.lastLoginSnapshot.expiresAt === snapshot.expiresAt && this.lastLoginSnapshot.pageUrl === snapshot.pageUrl) {return;}
-		this.lastLoginSnapshot = snapshot;
-		for (const listener of this.loginListeners) {listener(snapshot);}
+		if (this.lastLoginSnapshot && this.lastLoginSnapshot.status === snapshot.status && this.lastLoginSnapshot.message === snapshot.message && this.lastLoginSnapshot.qrRevision === snapshot.qrRevision && this.lastLoginSnapshot.expiresAt === snapshot.expiresAt) {return;}
+		this.lastLoginSnapshot = snapshot; for (const listener of this.loginListeners) {listener(snapshot);}
 	}
-
-	private async launchContext(): Promise<BrowserContext> {
-		this.logger?.info('Launching persistent headless Chromium browser.');
-		try {
-			await mkdir(this.profilePath, { recursive: true });
-			// Let Playwright validate the headless shell runtime during launch.
-			return await chromium.launchPersistentContext(this.profilePath, { headless: true });
-		} catch (error) {
-			const failure = diagnoseBrowserStartup(error);
-			this.logger?.error('Chromium launch failed (platform: %s, category: %s, missing libraries: %s).',
-				process.platform, failure.category, failure.missingLibraries.join(', ') || 'none detected');
-			throw failure.error;
-		}
+	private async getContext(): Promise<BrowserContext> {
+		if (this.context && !this.context.browser()?.isConnected()) {this.context = undefined;}
+		if (this.context) {return this.context;}
+		if (!this.opening) {this.opening = this.launchContext();}
+		try { this.context = await this.opening; this.context.on('close', () => {this.context = undefined; this.stopLogin();}); return this.context; } finally {this.opening = undefined;}
 	}
-
-	private async closeContext(): Promise<void> {
-		const context = this.context;
-		this.context = undefined;
-		this.loginPage = undefined;
-		if (context) {
-			this.logger?.debug('Closing persistent Chromium browser.');
-			await context.close().catch(() => undefined);
-		}
-	}
+	private async launchContext(): Promise<BrowserContext> { this.logger?.info('Launching persistent headless Chromium browser.'); try { await mkdir(this.profilePath, { recursive: true }); return await chromium.launchPersistentContext(this.profilePath, { headless: true }); } catch (error) { const failure = diagnoseBrowserStartup(error); this.logger?.error('Chromium launch failed (platform: %s, category: %s, missing libraries: %s).', process.platform, failure.category, failure.missingLibraries.join(', ') || 'none detected'); throw failure.error; } }
+	private async closeContext(): Promise<void> { const context = this.context; this.context = undefined; this.loginPage = undefined; this.observer?.dispose(); this.observer = undefined; if (context) {await context.close().catch(() => undefined);} }
 }

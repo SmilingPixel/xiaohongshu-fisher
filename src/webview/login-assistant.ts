@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import type { BrowserSession, LoginSnapshot } from '../session/browser-session';
+import type { BrowserSession } from '../session/browser-session';
+import type { LoginSnapshot } from '../session/login-model';
 import type { LoginQrImageProvider } from '../session/login-qr-image-provider';
 import { isLoginAssistantMessage, renderLoginAssistantHtml, toLoginAssistantViewState } from './login-assistant-security';
 import type { ExtensionLogger } from '../logging';
@@ -7,10 +8,11 @@ import type { ExtensionLogger } from '../logging';
 const INITIAL_SNAPSHOT: LoginSnapshot = {
 	status: 'loading',
 	message: '正在启动无头浏览器并打开官方登录页…',
+	qrRevision: 0,
 	expiresAt: 0,
 };
 
-const LOGIN_TERMINAL_STATES = new Set<LoginSnapshot['status']>(['access-restricted', 'page-error', 'verification-required']);
+const LOGIN_TERMINAL_STATES = new Set<LoginSnapshot['status']>(['logged-in', 'expired', 'qr-unavailable', 'access-restricted', 'page-error', 'verification-required']);
 
 export class LoginAssistant implements vscode.Disposable {
 	private panel?: vscode.WebviewPanel;
@@ -39,6 +41,7 @@ export class LoginAssistant implements vscode.Disposable {
 			this.update({
 				status: 'page-error',
 				message: error instanceof Error ? error.message : '无法启动无头登录流程。',
+				qrRevision: 0,
 				expiresAt: 0,
 			});
 			throw error;
@@ -57,13 +60,14 @@ export class LoginAssistant implements vscode.Disposable {
 			await this.open();
 			return;
 		}
-		this.update({ status: 'loading', message: '正在向官方页面请求新二维码…', expiresAt: 0 });
+		this.update({ status: 'loading', message: '正在向官方页面请求新二维码…', qrRevision: 0, expiresAt: 0 });
 		try {
 			this.update(await this.session.refreshLoginQr());
 		} catch (error) {
 			this.update({
 				status: 'page-error',
 				message: error instanceof Error ? error.message : '无法刷新二维码。',
+				qrRevision: 0,
 				expiresAt: 0,
 			});
 		} finally {
@@ -108,7 +112,7 @@ export class LoginAssistant implements vscode.Disposable {
 			return;
 		}
 		if (value.command === 'show-qr') {
-			if (!LOGIN_TERMINAL_STATES.has(this.snapshot.status) && this.snapshot.qrImage) {
+			if (!LOGIN_TERMINAL_STATES.has(this.snapshot.status) && this.snapshot.qrPng) {
 				await vscode.commands.executeCommand('vscode.open', this.qrImageProvider.getUri(), { preview: false });
 			}
 			return;
@@ -130,7 +134,7 @@ export class LoginAssistant implements vscode.Disposable {
 	private update(snapshot: LoginSnapshot): void {
 		if (!this.panel) {return;}
 		this.snapshot = snapshot;
-		this.qrImageProvider.setBase64Image(LOGIN_TERMINAL_STATES.has(snapshot.status) ? undefined : snapshot.qrImage);
+		this.qrImageProvider.setImage(LOGIN_TERMINAL_STATES.has(snapshot.status) ? undefined : snapshot.qrPng);
 		void this.postSnapshot();
 	}
 

@@ -1,32 +1,20 @@
 import { classifyOfficialErrorRedirect } from '../sources/official-page-error';
-
-export type LoginStatus =
-	| 'loading'
-	| 'waiting-scan'
-	| 'qr-unavailable'
-	| 'access-restricted'
-	| 'page-error'
-	| 'logged-in'
-	| 'expired'
-	| 'verification-required';
+import type { LoginStatus } from './login-model';
+export type { LoginStatus } from './login-model';
 
 export interface LoginDetectionInput {
 	readonly url: string;
 	readonly bodyText: string;
 	readonly hasQr: boolean;
+	readonly authenticated?: boolean;
 	readonly now: number;
 	readonly expiresAt: number;
+	readonly officialExpired?: boolean;
 }
-
-export interface LoginDetection {
-	readonly status: LoginStatus;
-	readonly message: string;
-}
+export interface LoginDetection { readonly status: LoginStatus; readonly message: string; }
 
 const VERIFICATION_TEXT = /滑块|拖动验证|请完成验证|人机验证|安全验证|身份验证|captcha|robot/i;
 const EXPIRED_TEXT = /二维码.{0,8}(失效|过期)|请刷新二维码|重新获取二维码/;
-const LOGGED_IN_TEXT = /退出登录|我的主页|个人主页|收藏夹|关注列表/;
-const LOGIN_TEXT = /扫码登录|登录|手机号|密码/;
 
 export function detectLoginState(input: LoginDetectionInput): LoginDetection {
 	const text = input.bodyText.replaceAll(/\s+/g, '');
@@ -34,29 +22,11 @@ export function detectLoginState(input: LoginDetectionInput): LoginDetection {
 		return { status: 'page-error', message: '登录页跳转到了不受支持的地址，已停止读取。请检查官方页面后重新打开登录。' };
 	}
 	const officialError = classifyOfficialErrorRedirect(input.url);
-	if (officialError) {
-		return {
-			status: officialError.kind === 'ip-risk' ? 'access-restricted' : 'page-error',
-			message: officialError.message,
-		};
-	}
-	if (VERIFICATION_TEXT.test(text)) {
-		return { status: 'verification-required', message: '小红书要求人工完成安全验证，已暂停登录。扩展仅支持扫码登录，无法处理扫码以外的验证，请稍后重新尝试登录。' };
-	}
-	if (LOGGED_IN_TEXT.test(text)) {
-		return { status: 'logged-in', message: '已登录，可以返回列表刷新内容。' };
-	}
-	if ((input.expiresAt > 0 && input.now >= input.expiresAt) || EXPIRED_TEXT.test(text)) {
-		return { status: 'expired', message: '二维码已过期，请刷新二维码后重试。' };
-	}
-	if (input.hasQr) {
-		return { status: 'waiting-scan', message: '请使用小红书手机客户端扫描二维码并确认登录。' };
-	}
-	if (LOGIN_TEXT.test(text)) {
-		return { status: 'loading', message: '正在等待官方登录二维码…' };
-	}
-	if (input.url && !input.url.startsWith('about:blank')) {
-		return { status: 'loading', message: '正在读取官方登录页面…' };
-	}
-	return { status: 'loading', message: '正在打开官方登录页面…' };
+	if (officialError) {return { status: officialError.kind === 'ip-risk' ? 'access-restricted' : 'page-error', message: officialError.message };}
+	if (VERIFICATION_TEXT.test(text)) {return { status: 'verification-required', message: '小红书要求人工完成安全验证，已暂停登录。扩展仅支持扫码登录，无法处理扫码以外的验证，请稍后重新尝试登录。' };}
+	if (input.authenticated) {return { status: 'logged-in', message: '已登录，可以返回列表刷新内容。' };}
+	if (input.officialExpired || (input.expiresAt > 0 && input.now >= input.expiresAt) || EXPIRED_TEXT.test(text)) {return { status: 'expired', message: '二维码已过期，请刷新二维码后重试。' };}
+	if (input.hasQr) {return { status: 'waiting-scan', message: '请使用小红书手机客户端扫描二维码并确认登录。' };}
+	if (/扫码登录|登录|手机号|密码/.test(text)) {return { status: 'loading', message: '正在等待官方登录二维码…' };}
+	return { status: 'loading', message: input.url && !input.url.startsWith('about:blank') ? '正在读取官方登录页面…' : '正在打开官方登录页面…' };
 }
