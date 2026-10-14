@@ -4,7 +4,7 @@
 
 ## 当前范围
 
-扩展提供推荐、发现、搜索结果三个 TreeView，支持按需刷新、分页、打开笔记阅读页和跳转至小红书官方网页。数据由扩展宿主中的 Playwright 页面适配器读取。运行目标分为桌面可见模式和远程无头模式：桌面模式用于直接观察官方登录页，远程模式用于 VS Code Remote SSH、容器等没有图形桌面的扩展宿主。无头模式仍需完成平台行为验证后才进入实现。
+扩展提供推荐、发现、搜索结果三个 TreeView，支持刷新、分页、内置笔记阅读和用户主动打开外链。数据由扩展宿主中的 Playwright 页面适配器读取。桌面、Remote SSH 和容器统一使用无头 Chromium，通过 VS Code 扫码辅助页登录。
 
 当前没有发帖、评论、点赞、收藏、关注、私信等互动功能。扩展不会导入用户日常浏览器的 Cookie，也不会自动处理验证码或访问限制。
 
@@ -52,13 +52,13 @@ flowchart TB
 
 ### 浏览器会话
 
-`src/session/browser-session.ts` 通过 Playwright 启动独立、持久化的 Chromium 上下文，profile 存放在 VS Code `globalStorageUri` 下的 `browser-profile` 目录。用户通过官方网页自行登录；“清除会话”会关闭上下文并删除该目录。
+`src/session/browser-session.ts` 管理持久化的无头 Chromium 上下文，profile 存放在 `globalStorageUri/browser-profile`，已有会话继续尝试复用。用户通过 VS Code 登录辅助页查看官方二维码并用手机扫码；“清除会话”会关闭上下文并删除 profile。
 
-`BrowserSession` resolves `auto`, `visible`, or `headless` from configuration and the extension host environment before launching the persistent context. Both modes use the same extension-owned profile and page source. Launch failures do not silently switch modes.
+`BrowserSession` 按需启动并复用同一个浏览器上下文。启动失败时报告错误，不自动打开外部浏览器。
 
-`src/session/browser-startup.ts` classifies launch failures into missing runtime, missing system dependencies, display, sandbox, profile lock, permission, or unknown errors. Playwright validates the executable selected for the active mode because headless Chromium uses a separate runtime. Logs contain only the mode, platform, category, and missing library basenames; raw launch arguments and profile paths never leave the classifier. On Linux, the user-triggered runtime installation command includes `--with-deps` and runs in the extension host terminal, where the system package manager may request sudo privileges.
+`src/session/browser-startup.ts` 将启动失败分类为缺少运行时、缺少系统依赖、沙箱、会话占用、权限或未知错误。Playwright 在启动时校验所需的 headless shell 运行时。日志仅包含平台、错误类别和缺少的动态库名称，不暴露原始启动参数或 profile 路径。Linux 下，用户主动运行的安装命令包含 `--with-deps`，在扩展宿主终端中执行，系统包管理器可能要求 sudo 权限。
 
-无头模式不把小红书页面嵌进 WebView，也不把 Cookie 发送给前端。登录页仍在 Playwright 页面中运行，扩展只定时检查页面状态，并把官方页面的短时截图作为登录辅助显示在 VS Code WebView 中。二维码过期、扫码失败或出现滑块/二次验证时，扩展停止轮询并提示用户在官方页面完成处理；不实现验证码识别或规避。
+官方登录页在 Playwright 中运行，不嵌入 WebView，也不把 Cookie 发送给前端。登录辅助页接收登录状态和二维码可用状态，二维码截图通过临时 VS Code 图像文档显示。二维码过期或需要额外验证时停止轮询，等待用户主动重试。官方页面外链仅供查看，系统浏览器不共享扩展会话。
 
 ### 阅读 WebView
 
@@ -68,25 +68,19 @@ flowchart TB
 
 ## 主要流程
 
-### 运行模式选择
+### 浏览器启动
 
 ```mermaid
 flowchart TD
-    Start[打开登录或读取命令] --> Config{浏览器模式}
-    Config -->|visible| Visible[启动可见持久化 Chromium]
-    Config -->|headless| Headless[启动无头持久化 Chromium]
-    Config -->|auto| Detect{扩展宿主有可用图形环境?}
-    Detect -->|是| Visible
-    Detect -->|否| Headless
-    Visible --> Session[复用扩展 profile]
-    Headless --> Session
-    Session --> Read[官方页面读取]
-    Headless --> LoginUI[扫码登录辅助 WebView]
+    Start[登录或内容读取命令] --> Browser[持久化无头 Chromium]
+    Browser --> Session[扩展专属 profile]
+    Session --> Read[官方页面数据源]
+    Browser --> LoginUI[VS Code 扫码登录辅助页]
 ```
 
-`auto` 只能作为便捷默认值；诊断信息必须显示最终选择的模式。若 Chromium 缺少系统库、沙箱权限或其他启动依赖，应报告具体原因并提供安装说明，不把所有错误都归类为登录失败。
+缺少运行时、系统库、沙箱权限或其他启动条件时，扩展报告具体原因和处理建议，不将启动错误笼统归类为登录失败。
 
-### 远程无头登录
+### 扫码登录
 
 ```mermaid
 sequenceDiagram
@@ -97,13 +91,13 @@ sequenceDiagram
     participant Login as 登录辅助 WebView
     participant Site as 小红书
 
-    User->>Command: 选择“远程登录/打开登录页”
-    Command->>Session: 创建 headless 持久化上下文
+    User->>Command: 运行扫码登录命令
+    Command->>Session: 创建无头持久化上下文
     Session->>Page: 导航官方登录页
     loop 直到扫码成功、过期或验证失败
         Page-->>Session: 页面状态与二维码区域
-        Session->>Login: 发送短时截图、过期时间和状态
-        User->>Login: 用手机扫描二维码
+        Session->>Login: 发送二维码可用状态、过期时间和登录状态
+        User->>Login: 在编辑器中打开二维码并用手机扫码
         Page->>Site: 官方登录流程
         Session->>Page: 低频检查登录状态
     end
@@ -112,7 +106,7 @@ sequenceDiagram
     Session->>Command: 允许用户刷新推荐/搜索
 ```
 
-二维码辅助视图只接收截图、状态、倒计时和“刷新二维码/重新尝试登录/关闭”等固定消息。官方错误页会先按受信任的主框架 URL 分类；300012 映射为网络 IP 风险，其他错误页映射为通用页面错误，均停止轮询并清理二维码。截图应在内存中短暂保存，登录完成、过期、错误或关闭面板后立即丢弃；不写入工作区、日志或持久化缓存。登录成功后，数据读取继续使用浏览器上下文，WebView 不持有会话材料。
+登录 WebView 仅接收状态、二维码可用状态、过期时间，以及经过校验、供用户主动打开的官方页面链接，并只发送固定命令。错误码 300012 归类为 IP 风险，其他官方错误重定向归类为页面错误。流程结束时停止轮询并清理二维码数据。截图仅在内存中短暂保存，供临时 VS Code 图像查看器显示；登录完成、过期、错误或关闭辅助页后立即清理，不写入日志、工作区或持久缓存。登录成功后的内容读取继续使用同一个浏览器上下文。
 
 ### 刷新列表与翻页
 
@@ -186,6 +180,6 @@ sequenceDiagram
 
 登录重定向处理依赖官方主框架导航，内容读取和扫码登录共用 URL 分类器。错误页不会触发自动重试、重放重定向参数或删除浏览器 profile；用户处理网络或官方页面后显式重试。远程主机的网络环境可能与本地电脑不同，IP 风险提示应在运行扩展的主机或容器侧排查。
 
-可选的高级方案是用户在本地启动 Chrome 并通过 SSH 隧道暴露 CDP，再由远程扩展使用 Playwright `connectOverCDP` 连接。该方案可复用本地可见登录环境，但端口转发、浏览器生命周期、连接断开和凭证边界复杂，不作为默认路径；扩展不能自动发现或连接用户已有浏览器。
+扩展使用专属的无头 Chromium profile，不提供自定义浏览器路径或 CDP 连接。社区调研文档保留历史方案比较。
 
 日常依赖、脚本和打包使用 pnpm。核心本地验证为 `pnpm run compile`、`pnpm run lint` 和 `pnpm run test:unit`；完整 VS Code 扩展宿主测试需要可用的图形环境。

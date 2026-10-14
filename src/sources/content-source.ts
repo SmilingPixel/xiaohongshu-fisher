@@ -6,6 +6,5 @@ export interface ContentSource {
 	searchNotes(query: string, cursor?: string, signal?: AbortSignal): Promise<PageResult<FeedItem>>;
 	getNoteDetail(id: string, context?: NoteSourceContext, signal?: AbortSignal): Promise<NoteDetail>;
 	getSessionStatus(): Promise<SessionStatus>;
-	openLogin(): Promise<void>;
 	dispose(): Promise<void>;
 }

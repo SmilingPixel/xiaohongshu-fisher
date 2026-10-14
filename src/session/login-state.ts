@@ -41,7 +41,7 @@ export function detectLoginState(input: LoginDetectionInput): LoginDetection {
 		};
 	}
 	if (VERIFICATION_TEXT.test(text)) {
-		return { status: 'verification-required', message: '小红书要求人工完成安全验证，已暂停登录。请在当前会话的官方浏览器页面完成验证后重试。' };
+		return { status: 'verification-required', message: '小红书要求人工完成安全验证，已暂停登录。扩展仅支持扫码登录，无法处理扫码以外的验证，请稍后重新尝试登录。' };
 	}
 	if (LOGGED_IN_TEXT.test(text)) {
 		return { status: 'logged-in', message: '已登录，可以返回列表刷新内容。' };

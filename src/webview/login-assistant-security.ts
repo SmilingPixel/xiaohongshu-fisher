@@ -87,7 +87,7 @@ export function renderLoginAssistantHtml(snapshot: LoginSnapshot): string {
 <body>
 	<h1>小红书扫码登录</h1>
 	<p class="status" id="status">${escapeHtml(viewState.message)}</p>
-	<p class="notice" id="official-link"${viewState.pageUrl ? '' : ' hidden'}><a href="#">在官方页面继续处理</a></p>
+	<p class="notice" id="official-link"${viewState.pageUrl ? '' : ' hidden'}><a href="#">在浏览器中查看官方页面</a>（外部浏览器操作不会同步到扩展会话）</p>
 	<p class="notice" id="countdown"></p>
 	<div class="actions">
 		<button id="show-qr"${viewState.qrAvailable ? '' : ' disabled'}>在编辑器中显示二维码</button>

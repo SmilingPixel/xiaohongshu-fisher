@@ -3,7 +3,6 @@ import { ContentApplicationService, type FeedKey, type FeedState } from './appli
 import type { FeedItem } from './models/content';
 import { SourceError } from './models/source-error';
 import { BrowserSession } from './session/browser-session';
-import { normalizeBrowserMode } from './session/browser-mode';
 import { LoginQrImageProvider } from './session/login-qr-image-provider';
 import { XiaohongshuPageSource } from './sources/xiaohongshu-page-source';
 import { LoginAssistant } from './webview/login-assistant';
@@ -108,10 +107,7 @@ function getTrustedNoteUrl(value: unknown): vscode.Uri | undefined {
 
 export function activate(context: vscode.ExtensionContext): void {
 	const logger = new ExtensionLogger();
-	const configuredMode = normalizeBrowserMode(
-		vscode.workspace.getConfiguration('xiaohongshu-fisher').get<unknown>('browserMode')
-	);
-	const session = new BrowserSession(context.globalStorageUri, configuredMode, logger);
+	const session = new BrowserSession(context.globalStorageUri, logger);
 	const source = new XiaohongshuPageSource(session, logger);
 	const application = new ContentApplicationService(source, logger);
 	const loginQrImageProvider = new LoginQrImageProvider();
@@ -124,7 +120,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	};
 
 	context.subscriptions.push(logger, session, loginQrImageProvider, loginAssistant, reader, { dispose: () => application.dispose() }, ...Object.values(providers));
-	logger.info('Extension activated (browser mode: %s, remote: %s).', session.getMode(), Boolean(vscode.env.remoteName));
+	logger.info('Extension activated (headless browser, remote: %s).', Boolean(vscode.env.remoteName));
 	context.subscriptions.push({ dispose: () => { void source.dispose(); } });
 	context.subscriptions.push(
 		vscode.window.createTreeView('xiaohongshuFisher.homeFeed', { treeDataProvider: providers.homeFeed }),
@@ -175,11 +171,6 @@ export function activate(context: vscode.ExtensionContext): void {
 				return;
 			}
 		}
-		const uri = getTrustedNoteUrl(value);
-		if (uri) {
-			await vscode.env.openExternal(uri);
-			return;
-		}
 		void vscode.window.showWarningMessage('没有可读取的小红书笔记。');
 	});
 	registerCommand(context, 'openInBrowser', async (value: unknown) => {
@@ -192,11 +183,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	});
 	registerCommand(context, 'openLogin', async () => {
 		try {
-			if (session.getMode() === 'headless') {
-				await loginAssistant.open();
-				return;
-			}
-			await source.openLogin();
+			await loginAssistant.open();
 		} catch (error) {
 			const sourceError = error instanceof SourceError ? error : undefined;
 			if (sourceError?.code === 'browser-missing' || sourceError?.code === 'browser-dependencies') {
@@ -205,14 +192,10 @@ export function activate(context: vscode.ExtensionContext): void {
 				});
 				return;
 			}
-			void vscode.window.showErrorMessage(sourceError?.message ?? '无法打开独立的小红书浏览器。');
+			void vscode.window.showErrorMessage(sourceError?.message ?? '无法启动无头登录流程。');
 		}
 	});
 	registerCommand(context, 'refreshLoginQr', () => {
-		if (session.getMode() !== 'headless') {
-			void vscode.window.showInformationMessage('当前使用可见浏览器，无头登录二维码仅适用于 headless 模式。');
-			return;
-		}
 		return loginAssistant.refreshQr();
 	});
 	registerCommand(context, 'installBrowserRuntime', () => {

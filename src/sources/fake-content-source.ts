@@ -54,7 +54,6 @@ export class FakeContentSource implements ContentSource {
 		return 'logged-out';
 	}
 
-	async openLogin(): Promise<void> {}
 
 	async dispose(): Promise<void> {}
 

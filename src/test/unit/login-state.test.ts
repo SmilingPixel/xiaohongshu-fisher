@@ -24,7 +24,11 @@ test('detects official risk restriction pages', () => {
 });
 
 test('stops the login flow for verification and expired QR states', () => {
-	assert.equal(detectLoginState({ ...base, bodyText: '请完成安全验证', hasQr: false }).status, 'verification-required');
+	const verification = detectLoginState({ ...base, bodyText: '请完成安全验证', hasQr: false });
+	assert.equal(verification.status, 'verification-required');
+	assert.match(verification.message, /仅支持扫码登录/);
+	assert.match(verification.message, /稍后重新尝试登录/);
+	assert.doesNotMatch(verification.message, /在当前会话的官方浏览器页面完成验证/);
 	assert.equal(detectLoginState({ ...base, bodyText: '', hasQr: true, now: 100_000 }).status, 'expired');
 	assert.equal(detectLoginState({ ...base, bodyText: '二维码已失效', hasQr: true }).status, 'expired');
 });
