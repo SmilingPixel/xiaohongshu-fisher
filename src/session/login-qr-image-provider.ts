@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { decodeQrPngBase64 } from './login-qr-image';
+import { validateQrPng } from './login-qr-image';
 
 const QR_IMAGE_PATH = '/login-qr.png';
 
@@ -21,12 +21,12 @@ export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.D
 		return this.uri;
 	}
 
-	setBase64Image(value: string | undefined): void {
-		const image = decodeQrPngBase64(value);
+	setImage(value: Uint8Array | undefined): void {
+		const image = validateQrPng(value);
 		if (!image) {this.clear(); return;}
 		this.image?.fill(0);
 		this.image = image;
-		this.modifiedAt = Date.now();
+		this.modifiedAt = Math.max(Date.now(), this.modifiedAt + 1);
 		this.changeEmitter.fire([{ type: vscode.FileChangeType.Changed, uri: this.uri }]);
 	}
 
@@ -34,7 +34,7 @@ export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.D
 		if (!this.image) {return;}
 		this.image.fill(0);
 		this.image = undefined;
-		this.modifiedAt = Date.now();
+		this.modifiedAt = Math.max(Date.now(), this.modifiedAt + 1);
 		this.changeEmitter.fire([{ type: vscode.FileChangeType.Deleted, uri: this.uri }]);
 		this.closeQrEditorTabs();
 	}
