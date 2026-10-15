@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { diagnoseBrowserStartup } from './browser-startup';
 import { detectLoginState, type LoginDetection } from './login-state';
 import { LOGIN_TERMINAL_STATES, type LoginSnapshot, type LoginStatus } from './login-model';
-import { LoginQrObserver } from './login-qr-observer';
+import { LoginQrClient, type LoginQrFailure } from './login-qr-client';
 import { renderLoginQrPng } from './login-qr-renderer';
 import type { LoginQrChallenge } from './login-qr';
 import { classifyOfficialErrorRedirect, type OfficialPageError } from '../sources/official-page-error';
@@ -21,12 +21,12 @@ const LOGIN_QR_WAIT_TIMEOUT = 30_000;
 export type { LoginSnapshot, LoginStatus } from './login-model';
 type LoginSnapshotListener = (snapshot: LoginSnapshot) => void;
 
-/** Owns the persistent browser context and the page that completes the official QR login flow. */
+/** Owns the persistent session and coordinates direct QR creation with the official page's login confirmation. */
 export class BrowserSession implements vscode.Disposable {
 	private context?: BrowserContext;
 	private opening?: Promise<BrowserContext>;
 	private loginPage?: Page;
-	private observer?: LoginQrObserver;
+	private qrClient?: LoginQrClient;
 	private readonly profilePath: string;
 	private readonly loginListeners = new Set<LoginSnapshotListener>();
 	private loginPoll?: NodeJS.Timeout;
@@ -47,7 +47,7 @@ export class BrowserSession implements vscode.Disposable {
 	stopLogin(): void {
 		this.loginGeneration++;
 		this.stopLoginPolling();
-		this.observer?.dispose(); this.observer = undefined;
+		this.qrClient?.dispose(); this.qrClient = undefined;
 		this.clearLoginMaterial();
 		const page = this.loginPage; this.loginPage = undefined;
 		if (page) { void page.close().catch(() => undefined); }
@@ -58,24 +58,27 @@ export class BrowserSession implements vscode.Disposable {
 
 	private async beginLoginAttempt(operation: 'start' | 'refresh'): Promise<LoginSnapshot> {
 		const generation = ++this.loginGeneration;
-		this.stopLoginPolling(); this.observer?.dispose(); this.observer = undefined; this.clearLoginMaterial();
+		this.stopLoginPolling(); this.qrClient?.dispose(); this.qrClient = undefined; this.clearLoginMaterial();
 		const oldPage = this.loginPage; this.loginPage = undefined;
 		if (oldPage) { await oldPage.close().catch(() => undefined); }
 		if (generation !== this.loginGeneration) {return this.cancelledLoginSnapshot();}
 		this.lastLoginSnapshot = undefined;
-		this.emitLoginSnapshot(this.toLoginSnapshot({ status: 'loading', message: '正在启动无头浏览器并打开官方登录页…' }));
+		this.emitLoginSnapshot(this.toLoginSnapshot({ status: 'loading', message: '正在初始化登录环境并获取二维码…' }));
 		const context = await this.getContext();
 		if (generation !== this.loginGeneration) {return this.cancelledLoginSnapshot();}
 		const page = await context.newPage();
 		if (generation !== this.loginGeneration) {await page.close().catch(() => undefined); return this.cancelledLoginSnapshot();}
 		this.loginPage = page;
-		this.observer = new LoginQrObserver(page,
+		this.qrClient = new LoginQrClient(page,
 			challenge => { void this.acceptChallenge(challenge, page, generation); },
 			failure => {
-				if (!this.inactiveLoginSnapshot(page, generation)) {this.logger?.warn('QR creation failed (reason: %s).', failure);}
+				if (!this.inactiveLoginSnapshot(page, generation)) {this.publishQrFailure(failure);}
 			});
 		page.on('framenavigated', frame => { if (frame === page.mainFrame() && page === this.loginPage) {this.handleLoginNavigation(page, frame.url(), generation);} });
 		try {
+			await this.qrClient.install();
+			const inactive = this.inactiveLoginSnapshot(page, generation);
+			if (inactive) {return inactive;}
 			await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
 			const snapshot = await this.waitForLoginSnapshot(page, generation);
 			if (generation !== this.loginGeneration) {return this.cancelledLoginSnapshot();}
@@ -97,6 +100,7 @@ export class BrowserSession implements vscode.Disposable {
 		try {
 			const png = await renderLoginQrPng(challenge);
 			if (generation !== this.loginGeneration || page !== this.loginPage) {png.fill(0); return;}
+			this.logger?.info('Login QR created from the direct API response.');
 			this.loginPng?.fill(0); this.loginPng = png; this.loginRevision++;
 			if (this.loginExpiresAt === 0) {this.loginExpiresAt = Date.now() + LOGIN_QR_LIFETIME;}
 			this.emitLoginSnapshot(this.toLoginSnapshot({ status: 'waiting-scan', message: '请使用小红书手机客户端扫描二维码并确认登录。' }));
@@ -132,8 +136,8 @@ export class BrowserSession implements vscode.Disposable {
 			if (inactive) {return inactive;}
 			if (snapshot.status !== 'loading') {return snapshot;}
 			if (Date.now() >= deadline) {
-				const diagnostics = this.observer?.getDiagnostics();
-				this.logger?.warn('Login QR acquisition timed out (request started: %s, response received: %s, failure: %s).', diagnostics?.requestStarted ?? false, diagnostics?.responseReceived ?? false, diagnostics?.failure ?? 'none');
+				const diagnostics = this.qrClient?.getDiagnostics();
+				this.logger?.warn('Login QR acquisition timed out (request sent: %s, response received: %s, failure: %s).', diagnostics?.requestSent ?? false, diagnostics?.responseReceived ?? false, diagnostics?.failure ?? 'none');
 				return this.publishTerminal({ status: 'qr-unavailable', message: '未能在规定时间内获取官方二维码，请检查运行扩展的主机所使用的网络后重试。可在“输出 → Xiaohongshu Fisher”查看请求诊断。' }, 'login-acquisition');
 			}
 			await new Promise(resolve => setTimeout(resolve, 300));
@@ -169,9 +173,24 @@ export class BrowserSession implements vscode.Disposable {
 		const error = classifyOfficialErrorRedirect(url); if (error) {this.publishOfficialPageError(error, 'login-navigation'); return;}
 		if (!this.isTrustedLoginPage(url)) {this.publishTerminal({ status: 'page-error', message: '登录页跳转到了不受支持的地址，已停止读取。请检查官方页面后重新打开登录。' }, 'login-navigation');}
 	}
+	private publishQrFailure(failure: LoginQrFailure): LoginSnapshot {
+		this.logger?.warn('Direct QR creation failed (reason: %s, HTTP status: %s).', failure.reason, failure.httpStatus ?? 'none');
+		if (failure.reason === 'request-rejected') {
+			return this.publishTerminal({
+				status: [401, 403, 406, 429].includes(failure.httpStatus ?? 0) ? 'access-restricted' : 'page-error',
+				message: `官方二维码接口请求失败（HTTP ${failure.httpStatus}）。请按官方提示检查会话或网络后重试。`,
+			}, 'login-create');
+		}
+		const message = failure.reason === 'timeout'
+			? '请求官方二维码接口超时，请检查运行扩展的主机所使用的网络后重试。'
+			: failure.reason === 'network'
+				? '无法完成官方二维码接口请求，请检查运行扩展的主机所使用的网络后重试。'
+				: '官方二维码接口返回了无法识别的数据，请稍后重试。';
+		return this.publishTerminal({ status: 'qr-unavailable', message }, 'login-create');
+	}
 	private publishOfficialPageError(error: OfficialPageError, operation: string): LoginSnapshot { this.logger?.warn('Official page redirect detected (operation: %s, kind: %s, code: %s).', operation, error.kind, error.platformCode ?? 'unknown'); return this.publishTerminal({ status: error.kind === 'ip-risk' ? 'access-restricted' : 'page-error', message: error.message }, operation); }
 	private publishTerminal(detection: LoginDetection, operation: string): LoginSnapshot {
-		this.stopLoginPolling(); this.observer?.dispose(); this.observer = undefined; this.clearLoginMaterial();
+		this.stopLoginPolling(); this.qrClient?.dispose(); this.qrClient = undefined; this.clearLoginMaterial();
 		const page = this.loginPage; this.loginPage = undefined;
 		if (page) {void page.close().catch(() => undefined);}
 		const snapshot = this.toLoginSnapshot(detection); this.logger?.info('Login attempt stopped (operation: %s, state: %s).', operation, detection.status); this.emitLoginSnapshot(snapshot); return snapshot;
@@ -196,5 +215,5 @@ export class BrowserSession implements vscode.Disposable {
 		try { this.context = await this.opening; this.context.on('close', () => {this.context = undefined; this.stopLogin();}); return this.context; } finally {this.opening = undefined;}
 	}
 	private async launchContext(): Promise<BrowserContext> { this.logger?.info('Launching persistent headless Chromium browser.'); try { await mkdir(this.profilePath, { recursive: true }); return await chromium.launchPersistentContext(this.profilePath, { headless: true }); } catch (error) { const failure = diagnoseBrowserStartup(error); this.logger?.error('Chromium launch failed (platform: %s, category: %s, missing libraries: %s).', process.platform, failure.category, failure.missingLibraries.join(', ') || 'none detected'); throw failure.error; } }
-	private async closeContext(): Promise<void> { const context = this.context; this.context = undefined; this.loginPage = undefined; this.observer?.dispose(); this.observer = undefined; if (context) {await context.close().catch(() => undefined);} }
+	private async closeContext(): Promise<void> { const context = this.context; this.context = undefined; this.loginPage = undefined; this.qrClient?.dispose(); this.qrClient = undefined; if (context) {await context.close().catch(() => undefined);} }
 }

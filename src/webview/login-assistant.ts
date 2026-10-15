@@ -7,7 +7,7 @@ import type { ExtensionLogger } from '../logging';
 
 const INITIAL_SNAPSHOT: LoginSnapshot = {
 	status: 'loading',
-	message: '正在启动无头浏览器并打开官方登录页…',
+	message: '正在初始化登录环境并获取二维码…',
 	qrRevision: 0,
 	expiresAt: 0,
 };
@@ -60,7 +60,7 @@ export class LoginAssistant implements vscode.Disposable {
 			await this.open();
 			return;
 		}
-		this.update({ status: 'loading', message: '正在向官方页面请求新二维码…', qrRevision: 0, expiresAt: 0 });
+		this.update({ status: 'loading', message: '正在请求新的登录二维码…', qrRevision: 0, expiresAt: 0 });
 		try {
 			this.update(await this.session.refreshLoginQr());
 		} catch (error) {
