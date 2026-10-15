@@ -16,6 +16,12 @@ export interface LoginDetection { readonly status: LoginStatus; readonly message
 const VERIFICATION_TEXT = /滑块|拖动验证|请完成验证|人机验证|安全验证|身份验证|captcha|robot/i;
 const EXPIRED_TEXT = /二维码.{0,8}(失效|过期)|请刷新二维码|重新获取二维码/;
 
+/** A session cookie can represent a guest; require the official account response. */
+export function isAuthenticatedUserResponse(value: unknown): boolean {
+	const response = value as { success?: unknown; code?: unknown; data?: { guest?: unknown } } | null;
+	return response?.success === true && response.code === 0 && response.data?.guest === false;
+}
+
 export function detectLoginState(input: LoginDetectionInput): LoginDetection {
 	const text = input.bodyText.replaceAll(/\s+/g, '');
 	if (input.url && !input.url.startsWith('about:blank') && !input.url.startsWith('https://')) {

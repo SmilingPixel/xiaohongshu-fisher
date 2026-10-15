@@ -40,7 +40,7 @@ export class LoginAssistant implements vscode.Disposable {
 			this.logger?.warn('QR login assistant failed to start: %s.', error instanceof Error ? error.name : 'unknown error');
 			this.update({
 				status: 'page-error',
-				message: error instanceof Error ? error.message : '无法启动无头登录流程。',
+				message: error instanceof Error ? error.message : '无法启动登录流程。',
 				qrRevision: 0,
 				expiresAt: 0,
 			});

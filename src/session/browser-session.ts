@@ -1,10 +1,10 @@
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
-import type { BrowserContext, Page } from 'playwright';
+import type { BrowserContext, Page, Response } from 'playwright';
 import { chromium } from 'playwright';
 import * as vscode from 'vscode';
-import { diagnoseBrowserStartup } from './browser-startup';
-import { detectLoginState, type LoginDetection } from './login-state';
+import { diagnoseBrowserStartup, type BrowserMode } from './browser-startup';
+import { detectLoginState, isAuthenticatedUserResponse, type LoginDetection } from './login-state';
 import { LOGIN_TERMINAL_STATES, type LoginSnapshot, type LoginStatus } from './login-model';
 import { LoginQrClient, type LoginQrFailure } from './login-qr-client';
 import { renderLoginQrPng } from './login-qr-renderer';
@@ -13,6 +13,8 @@ import { classifyOfficialErrorRedirect, type OfficialPageError } from '../source
 import type { ExtensionLogger } from '../logging';
 
 const LOGIN_URL = 'https://www.xiaohongshu.com/login';
+const USER_ENDPOINT = 'https://edith.xiaohongshu.com/api/sns/web/v2/user/me';
+const USER_RESPONSE_LIMIT = 64 * 1024;
 const PROFILE_DIRECTORY = 'browser-profile';
 const LOGIN_POLL_INTERVAL = 2_000;
 const LOGIN_QR_LIFETIME = 120_000;
@@ -25,10 +27,12 @@ type LoginSnapshotListener = (snapshot: LoginSnapshot) => void;
 export class BrowserSession implements vscode.Disposable {
 	private context?: BrowserContext;
 	private opening?: Promise<BrowserContext>;
+	private browserMode?: BrowserMode;
 	private loginPage?: Page;
 	private qrClient?: LoginQrClient;
 	private readonly profilePath: string;
 	private readonly loginListeners = new Set<LoginSnapshotListener>();
+	private readonly authenticatedPages = new WeakSet<Page>();
 	private loginPoll?: NodeJS.Timeout;
 	private loginPollInFlight = false;
 	private loginExpiresAt = 0;
@@ -38,7 +42,11 @@ export class BrowserSession implements vscode.Disposable {
 	private lastLoginSnapshot?: LoginSnapshot;
 	private loginGeneration = 0;
 
-	constructor(storageUri: vscode.Uri, private readonly logger?: ExtensionLogger) { this.profilePath = path.join(storageUri.fsPath, PROFILE_DIRECTORY); }
+	constructor(
+		storageUri: vscode.Uri,
+		private readonly logger?: ExtensionLogger,
+		private readonly getBrowserMode: () => BrowserMode = () => 'window',
+	) { this.profilePath = path.join(storageUri.fsPath, PROFILE_DIRECTORY); }
 	onLoginSnapshot(listener: LoginSnapshotListener): vscode.Disposable { this.loginListeners.add(listener); return { dispose: () => this.loginListeners.delete(listener) }; }
 
 	async startLogin(): Promise<LoginSnapshot> { return this.beginLoginAttempt('start'); }
@@ -52,7 +60,11 @@ export class BrowserSession implements vscode.Disposable {
 		const page = this.loginPage; this.loginPage = undefined;
 		if (page) { void page.close().catch(() => undefined); }
 	}
-	async openPage(): Promise<Page> { return (await this.getContext()).newPage(); }
+	async openPage(): Promise<Page> {
+		const page = await (await this.getContext()).newPage();
+		await this.minimizeWindow(page);
+		return page;
+	}
 	async clear(): Promise<void> { this.logger?.info('Clearing extension-owned browser session.'); this.stopLogin(); await this.closeContext(); await rm(this.profilePath, { recursive: true, force: true }); }
 	async dispose(): Promise<void> { this.stopLogin(); await this.closeContext(); this.loginListeners.clear(); }
 
@@ -67,13 +79,33 @@ export class BrowserSession implements vscode.Disposable {
 		const context = await this.getContext();
 		if (generation !== this.loginGeneration) {return this.cancelledLoginSnapshot();}
 		const page = await context.newPage();
+		await this.minimizeWindow(page);
 		if (generation !== this.loginGeneration) {await page.close().catch(() => undefined); return this.cancelledLoginSnapshot();}
 		this.loginPage = page;
+		page.on('close', () => {
+			if (page === this.loginPage && generation === this.loginGeneration) {
+				this.publishTerminal({ status: 'page-error', message: '登录浏览器页面已关闭，请重新打开扫码登录。' }, 'login-close');
+			}
+		});
 		this.qrClient = new LoginQrClient(page,
 			challenge => { void this.acceptChallenge(challenge, page, generation); },
 			failure => {
 				if (!this.inactiveLoginSnapshot(page, generation)) {this.publishQrFailure(failure);}
 			});
+		page.on('response', response => {
+			if (response.url().split('?')[0] === USER_ENDPOINT) {
+				void this.readLoginUserResponse(response, page, generation);
+				return;
+			}
+			if (response.url() !== 'https://edith.xiaohongshu.com/api/sns/web/v1/login/activate' || this.inactiveLoginSnapshot(page, generation)) {return;}
+			this.logger?.info('Official session activation responded (mode: %s, HTTP status: %s).', this.browserMode, response.status());
+			if (response.status() >= 400) {
+				this.publishTerminal({
+					status: [401, 403, 406, 429, 461, 471].includes(response.status()) ? 'access-restricted' : 'page-error',
+					message: `官方会话初始化失败（HTTP ${response.status()}），无法继续获取登录二维码。${this.browserMode === 'headless' ? '请在扩展设置中选择普通浏览器模式并重新加载窗口后重试。' : '请按官方提示处理后重试。'}`,
+				}, 'login-activate');
+			}
+		});
 		page.on('framenavigated', frame => { if (frame === page.mainFrame() && page === this.loginPage) {this.handleLoginNavigation(page, frame.url(), generation);} });
 		try {
 			await this.qrClient.install();
@@ -91,6 +123,23 @@ export class BrowserSession implements vscode.Disposable {
 			this.logger?.warn('Login navigation failed (category: %s).', error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'network');
 			return this.publishTerminal({ status: 'page-error', message: '暂时无法打开官方登录页，请检查运行扩展的主机所使用的网络后重试。' }, 'login-navigation');
 		}
+	}
+
+	/** Existing accounts redirect away from /login without creating a QR or showing logout text. */
+	private async readLoginUserResponse(response: Response, page: Page, generation: number): Promise<void> {
+		if (!response.ok() || this.inactiveLoginSnapshot(page, generation)) {return;}
+		try {
+			if (response.frame() !== page.mainFrame()) {return;}
+			const headers = response.headers();
+			if (!/application\/json(?:\s*;|$)/i.test(headers['content-type'] ?? '') || Number(headers['content-length']) > USER_RESPONSE_LIMIT) {return;}
+			const body = await response.body();
+			if (body.byteLength > USER_RESPONSE_LIMIT || this.inactiveLoginSnapshot(page, generation)) {return;}
+			// Retain only authentication evidence, never account data or cookies.
+			if (isAuthenticatedUserResponse(JSON.parse(body.toString('utf8')) as unknown)) {
+				this.authenticatedPages.add(page);
+				this.logger?.info('Official session status confirmed (state: logged-in).');
+			}
+		} catch { /* A failed or malformed response is not evidence of authentication. */ }
 	}
 
 	private async acceptChallenge(challenge: LoginQrChallenge, page: Page, generation: number): Promise<void> {
@@ -153,7 +202,7 @@ export class BrowserSession implements vscode.Disposable {
 		try { bodyText = await page.locator('body').innerText({ timeout: 1_500 }); } catch { /* transient navigation */ }
 		const stopped = this.inactiveLoginSnapshot(page, generation);
 		if (stopped) {return stopped;}
-		const detection = detectLoginState({ url, bodyText, hasQr: Boolean(this.loginPng), authenticated: /退出登录/.test(bodyText), now: Date.now(), expiresAt: this.loginExpiresAt });
+		const detection = detectLoginState({ url, bodyText, hasQr: Boolean(this.loginPng), authenticated: this.authenticatedPages.has(page) || /退出登录/.test(bodyText), now: Date.now(), expiresAt: this.loginExpiresAt });
 		if (LOGIN_TERMINAL_STATES.has(detection.status)) {return this.publishTerminal(detection, 'login-inspection');}
 		if (detection.status === 'waiting-scan' && !this.loginPng) {return this.toLoginSnapshot({ status: 'loading', message: '正在等待官方登录二维码…' });}
 		return this.toLoginSnapshot(detection);
@@ -211,9 +260,73 @@ export class BrowserSession implements vscode.Disposable {
 	private async getContext(): Promise<BrowserContext> {
 		if (this.context && !this.context.browser()?.isConnected()) {this.context = undefined;}
 		if (this.context) {return this.context;}
-		if (!this.opening) {this.opening = this.launchContext();}
-		try { this.context = await this.opening; this.context.on('close', () => {this.context = undefined; this.stopLogin();}); return this.context; } finally {this.opening = undefined;}
+		if (!this.opening) {
+			this.opening = this.launchContext().then(context => {
+				this.context = context;
+				context.on('close', () => {
+					if (this.context === context) {
+						this.context = undefined;
+						if (this.loginPage) {this.publishTerminal({ status: 'page-error', message: '浏览器会话已关闭，请重新打开扫码登录。' }, 'browser-close');}
+					}
+				});
+				return context;
+			}).finally(() => { this.opening = undefined; });
+		}
+		return this.opening;
 	}
-	private async launchContext(): Promise<BrowserContext> { this.logger?.info('Launching persistent headless Chromium browser.'); try { await mkdir(this.profilePath, { recursive: true }); return await chromium.launchPersistentContext(this.profilePath, { headless: true }); } catch (error) { const failure = diagnoseBrowserStartup(error); this.logger?.error('Chromium launch failed (platform: %s, category: %s, missing libraries: %s).', process.platform, failure.category, failure.missingLibraries.join(', ') || 'none detected'); throw failure.error; } }
-	private async closeContext(): Promise<void> { const context = this.context; this.context = undefined; this.loginPage = undefined; this.qrClient?.dispose(); this.qrClient = undefined; if (context) {await context.close().catch(() => undefined);} }
+	private async launchContext(): Promise<BrowserContext> {
+		const mode = this.getBrowserMode();
+		this.browserMode = mode;
+		this.logger?.info('Launching persistent Chromium browser (mode: %s).', mode);
+		try {
+			await mkdir(this.profilePath, { recursive: true });
+			const userAgent = mode === 'headless' ? await this.getHeadlessUserAgent() : undefined;
+			const context = await chromium.launchPersistentContext(this.profilePath, {
+				headless: mode === 'headless',
+				userAgent,
+			});
+			for (const page of context.pages()) {await this.minimizeWindow(page);}
+			return context;
+		} catch (error) {
+			const failure = diagnoseBrowserStartup(error, mode);
+			this.logger?.error('Chromium launch failed (platform: %s, mode: %s, category: %s, missing libraries: %s).', process.platform, mode, failure.category, failure.missingLibraries.join(', ') || 'none detected');
+			throw failure.error;
+		}
+	}
+
+	/** Use the installed runtime's UA so its version and platform stay current. */
+	private async getHeadlessUserAgent(): Promise<string> {
+		const browser = await chromium.launch({ headless: true });
+		try {
+			const connection = await browser.newBrowserCDPSession();
+			const { userAgent } = await connection.send('Browser.getVersion');
+			// The default HeadlessChrome token causes session activation to be rejected.
+			// Set the context UA, keeping request headers and navigator.userAgent aligned
+			// for every login/content page without modifying other browser properties.
+			this.logger?.debug('Headless Chromium User-Agent configured (source: runtime).');
+			return userAgent.replace('HeadlessChrome/', 'Chrome/');
+		} finally { await browser.close(); }
+	}
+
+	/** Keep one real browser environment for login and reading; request minimization where the window manager supports it. */
+	private async minimizeWindow(page: Page): Promise<void> {
+		if (this.browserMode !== 'window') {return;}
+		let connection: import('playwright').CDPSession | undefined;
+		try {
+			connection = await page.context().newCDPSession(page);
+			const { windowId } = await connection.send('Browser.getWindowForTarget');
+			await connection.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } });
+			const { bounds } = await connection.send('Browser.getWindowBounds', { windowId });
+			this.logger?.debug('Browser window minimization requested (reported state: %s).', bounds.windowState);
+		} catch {
+			if (!page.isClosed()) {this.logger?.debug('Browser window could not be minimized; the visible session remains available.');}
+		} finally { await connection?.detach().catch(() => undefined); }
+	}
+	private async closeContext(): Promise<void> {
+		const context = this.context ?? await this.opening?.catch(() => undefined);
+		this.context = undefined;
+		this.loginPage = undefined;
+		this.qrClient?.dispose(); this.qrClient = undefined;
+		if (context) {await context.close().catch(() => undefined);}
+	}
 }

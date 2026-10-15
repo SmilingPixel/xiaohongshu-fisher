@@ -1,6 +1,7 @@
 import { SourceError } from '../models/source-error';
 
-type BrowserStartupCategory = 'runtime-missing' | 'dependencies' | 'sandbox' | 'profile-in-use' | 'permissions' | 'unknown';
+export type BrowserMode = 'window' | 'headless';
+type BrowserStartupCategory = 'runtime-missing' | 'dependencies' | 'display-unavailable' | 'sandbox' | 'profile-in-use' | 'permissions' | 'unknown';
 
 export interface BrowserStartupFailure {
 	readonly category: BrowserStartupCategory;
@@ -9,17 +10,21 @@ export interface BrowserStartupFailure {
 }
 
 /** Converts Playwright launch failures into actionable messages and safe diagnostic metadata. */
-export function diagnoseBrowserStartup(error: unknown): BrowserStartupFailure {
+export function diagnoseBrowserStartup(error: unknown, mode: BrowserMode = 'headless'): BrowserStartupFailure {
 	// Raw browser logs contain launch arguments and profile paths. Inspect them locally,
 	// but expose only known categories and library basenames to logs and views.
 	const reason = error instanceof Error ? error.message.replace(/\x1b\[[0-9;]*m/g, '') : '';
 	let category: BrowserStartupCategory = 'unknown';
 	let detail = '请查看“输出”中的 Xiaohongshu Fisher 启动诊断，并参考 README 中的浏览器故障排查说明。';
 	const missingLibraries = new Set<string>();
+	const browserName = mode === 'headless' ? '无头 Chromium' : 'Chromium';
 
 	if (/Executable doesn't exist/i.test(reason)) {
 		category = 'runtime-missing';
-		detail = '缺少无头 Playwright Chromium 运行时，请运行“安装 Playwright Chromium”后重试。若已经安装，请尝试重启 extension。';
+		detail = `缺少${mode === 'headless' ? '无头 ' : ''}Playwright Chromium 运行时，请运行“安装 Playwright Chromium”后重试。若已经安装，请尝试重新加载 VS Code 窗口。`;
+	} else if (/Missing X server|\$DISPLAY|cannot open display|Failed to connect to Wayland display|Failed to initialize Wayland/i.test(reason)) {
+		category = 'display-unavailable';
+		detail = '普通浏览器模式需要图形桌面。请在有图形桌面的主机上运行扩展；也可在扩展设置中选择无头模式，但官方可能拒绝无头会话。';
 	} else if (/Host system is missing dependencies|Missing libraries:|error while loading shared libraries:/i.test(reason)) {
 		category = 'dependencies';
 		for (const match of reason.matchAll(/error while loading shared libraries:\s*(lib[A-Za-z0-9_+.-]{1,100}\.so(?:\.\d+)*)\s*:/g)) {
@@ -49,6 +54,6 @@ export function diagnoseBrowserStartup(error: unknown): BrowserStartupFailure {
 	return {
 		category,
 		missingLibraries: [...missingLibraries].slice(0, 20),
-		error: new SourceError(code, `无法启动无头 Chromium。${detail}`, false),
+		error: new SourceError(code, `无法启动${browserName}。${detail}`, false),
 	};
 }

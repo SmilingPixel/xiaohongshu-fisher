@@ -21,6 +21,22 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Xiaohongshu Fisher",
+      "properties": {
+        "xiaohongshu-fisher.browserMode": {
+          "type": "string",
+          "enum": ["window", "headless"],
+          "enumDescriptions": [
+            "使用普通 Chromium，尝试自动最小化窗口；系统不支持时窗口保持可见。登录和内容浏览共用同一会话。",
+            "不显示浏览器窗口；官方可能拒绝无头会话的初始化或访问。"
+          ],
+          "default": "window",
+          "scope": "machine",
+          "description": "浏览器运行模式。普通模式需要图形桌面。更改后请重新加载 VS Code 窗口。"
+        }
+      }
+    },
     "commands": [
       {
         "command": "xiaohongshu-fisher.refreshHomeFeed",
