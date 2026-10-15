@@ -45,7 +45,7 @@ export class BrowserSession implements vscode.Disposable {
 	constructor(
 		storageUri: vscode.Uri,
 		private readonly logger?: ExtensionLogger,
-		private readonly getBrowserMode: () => BrowserMode = () => 'window',
+		private readonly getBrowserMode: () => BrowserMode = () => 'headless',
 	) { this.profilePath = path.join(storageUri.fsPath, PROFILE_DIRECTORY); }
 	onLoginSnapshot(listener: LoginSnapshotListener): vscode.Disposable { this.loginListeners.add(listener); return { dispose: () => this.loginListeners.delete(listener) }; }
 

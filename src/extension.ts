@@ -108,7 +108,7 @@ function getTrustedNoteUrl(value: unknown): vscode.Uri | undefined {
 export function activate(context: vscode.ExtensionContext): void {
 	const logger = new ExtensionLogger();
 	const session = new BrowserSession(context.globalStorageUri, logger, () =>
-		vscode.workspace.getConfiguration('xiaohongshu-fisher').get<string>('browserMode', 'window') === 'headless' ? 'headless' : 'window');
+		vscode.workspace.getConfiguration('xiaohongshu-fisher').get<string>('browserMode', 'headless') === 'window' ? 'window' : 'headless');
 	const source = new XiaohongshuPageSource(session, logger);
 	const application = new ContentApplicationService(source, logger);
 	const loginQrImageProvider = new LoginQrImageProvider();
