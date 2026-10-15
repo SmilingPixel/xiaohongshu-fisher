@@ -16,7 +16,7 @@ const LOGIN_URL = 'https://www.xiaohongshu.com/login';
 const PROFILE_DIRECTORY = 'browser-profile';
 const LOGIN_POLL_INTERVAL = 2_000;
 const LOGIN_QR_LIFETIME = 120_000;
-const LOGIN_QR_WAIT_TIMEOUT = 15_000;
+const LOGIN_QR_WAIT_TIMEOUT = 30_000;
 
 export type { LoginSnapshot, LoginStatus } from './login-model';
 type LoginSnapshotListener = (snapshot: LoginSnapshot) => void;
@@ -61,25 +61,32 @@ export class BrowserSession implements vscode.Disposable {
 		this.stopLoginPolling(); this.observer?.dispose(); this.observer = undefined; this.clearLoginMaterial();
 		const oldPage = this.loginPage; this.loginPage = undefined;
 		if (oldPage) { await oldPage.close().catch(() => undefined); }
+		if (generation !== this.loginGeneration) {return this.cancelledLoginSnapshot();}
 		this.lastLoginSnapshot = undefined;
 		this.emitLoginSnapshot(this.toLoginSnapshot({ status: 'loading', message: '正在启动无头浏览器并打开官方登录页…' }));
 		const context = await this.getContext();
-		if (generation !== this.loginGeneration) {return this.toLoginSnapshot({ status: 'loading', message: '登录操作已取消。' });}
-		const page = await context.newPage(); this.loginPage = page;
+		if (generation !== this.loginGeneration) {return this.cancelledLoginSnapshot();}
+		const page = await context.newPage();
+		if (generation !== this.loginGeneration) {await page.close().catch(() => undefined); return this.cancelledLoginSnapshot();}
+		this.loginPage = page;
 		this.observer = new LoginQrObserver(page,
 			challenge => { void this.acceptChallenge(challenge, page, generation); },
-			failure => { this.logger?.debug('QR creation response was not usable (reason: %s).', failure); });
+			failure => {
+				if (!this.inactiveLoginSnapshot(page, generation)) {this.logger?.warn('QR creation failed (reason: %s).', failure);}
+			});
 		page.on('framenavigated', frame => { if (frame === page.mainFrame() && page === this.loginPage) {this.handleLoginNavigation(page, frame.url(), generation);} });
 		try {
 			await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
 			const snapshot = await this.waitForLoginSnapshot(page, generation);
+			if (generation !== this.loginGeneration) {return this.cancelledLoginSnapshot();}
 			this.logger?.info('QR login %s; initial state: %s.', operation, snapshot.status);
 			if (this.canContinueLogin(snapshot.status)) {this.startLoginPolling(generation);}
 			return snapshot;
 		} catch (error) {
-			if (generation !== this.loginGeneration) {return this.toLoginSnapshot({ status: 'loading', message: '登录操作已取消。' });}
-			this.publishTerminal({ status: 'page-error', message: '暂时无法打开官方登录页，请检查网络后重试。' }, 'login-navigation');
-			throw error;
+			const inactive = this.inactiveLoginSnapshot(page, generation);
+			if (inactive) {return inactive;}
+			this.logger?.warn('Login navigation failed (category: %s).', error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'network');
+			return this.publishTerminal({ status: 'page-error', message: '暂时无法打开官方登录页，请检查运行扩展的主机所使用的网络后重试。' }, 'login-navigation');
 		}
 	}
 
@@ -94,6 +101,7 @@ export class BrowserSession implements vscode.Disposable {
 			if (this.loginExpiresAt === 0) {this.loginExpiresAt = Date.now() + LOGIN_QR_LIFETIME;}
 			this.emitLoginSnapshot(this.toLoginSnapshot({ status: 'waiting-scan', message: '请使用小红书手机客户端扫描二维码并确认登录。' }));
 		} catch {
+			if (this.inactiveLoginSnapshot(page, generation)) {return;}
 			this.publishTerminal({ status: 'qr-unavailable', message: '无法生成登录二维码，请刷新后重试。' }, 'qr-render');
 		}
 	}
@@ -103,39 +111,58 @@ export class BrowserSession implements vscode.Disposable {
 
 	private async pollLogin(generation: number): Promise<void> {
 		if (this.loginPollInFlight || generation !== this.loginGeneration || !this.loginPage || this.loginPage.isClosed()) {return;}
-		if (this.loginExpiresAt > 0 && Date.now() >= this.loginExpiresAt && !this.lastLoginSnapshot?.status.includes('logged-in')) {
-			this.publishTerminal({ status: 'qr-unavailable', message: '二维码等待时间已结束，请刷新二维码后重试。' }, 'login-poll'); return;
-		}
+		const page = this.loginPage;
 		this.loginPollInFlight = true;
 		try {
-			const snapshot = await this.inspectLoginPage(this.loginPage, generation);
+			const snapshot = await this.inspectLoginPage(page, generation);
+			if (this.inactiveLoginSnapshot(page, generation)) {return;}
 			this.emitLoginSnapshot(snapshot);
 			if (!this.canContinueLogin(snapshot.status)) {this.stopLoginPolling();}
 		} catch {
+			if (this.inactiveLoginSnapshot(page, generation)) {return;}
 			this.stopLoginPolling(); this.publishTerminal({ status: 'page-error', message: '暂时无法读取官方登录页，已暂停登录。请检查网络后手动重试。' }, 'login-poll');
 		} finally { this.loginPollInFlight = false; }
 	}
 
 	private async waitForLoginSnapshot(page: Page, generation: number): Promise<LoginSnapshot> {
 		const deadline = Date.now() + LOGIN_QR_WAIT_TIMEOUT;
-		let snapshot = await this.inspectLoginPage(page, generation);
-		while (Date.now() < deadline && snapshot.status === 'loading') { await new Promise(resolve => setTimeout(resolve, 300)); snapshot = await this.inspectLoginPage(page, generation); }
-		return snapshot.status === 'loading'
-			? this.publishTerminal({ status: 'qr-unavailable', message: '未能在规定时间内读取二维码，请刷新后重试。' }, 'login-acquisition')
-			: snapshot;
+		while (true) {
+			const snapshot = await this.inspectLoginPage(page, generation);
+			const inactive = this.inactiveLoginSnapshot(page, generation);
+			if (inactive) {return inactive;}
+			if (snapshot.status !== 'loading') {return snapshot;}
+			if (Date.now() >= deadline) {
+				const diagnostics = this.observer?.getDiagnostics();
+				this.logger?.warn('Login QR acquisition timed out (request started: %s, response received: %s, failure: %s).', diagnostics?.requestStarted ?? false, diagnostics?.responseReceived ?? false, diagnostics?.failure ?? 'none');
+				return this.publishTerminal({ status: 'qr-unavailable', message: '未能在规定时间内获取官方二维码，请检查运行扩展的主机所使用的网络后重试。可在“输出 → Xiaohongshu Fisher”查看请求诊断。' }, 'login-acquisition');
+			}
+			await new Promise(resolve => setTimeout(resolve, 300));
+		}
 	}
 
 	private async inspectLoginPage(page: Page, generation: number): Promise<LoginSnapshot> {
-		if (generation !== this.loginGeneration || page !== this.loginPage) {return this.toLoginSnapshot({ status: 'loading', message: '正在读取官方登录页面…' });}
+		const inactive = this.inactiveLoginSnapshot(page, generation);
+		if (inactive) {return inactive;}
 		const url = page.url(); const redirect = classifyOfficialErrorRedirect(url);
 		if (redirect) {return this.publishOfficialPageError(redirect, 'login-inspection');}
 		let bodyText = '';
 		try { bodyText = await page.locator('body').innerText({ timeout: 1_500 }); } catch { /* transient navigation */ }
+		const stopped = this.inactiveLoginSnapshot(page, generation);
+		if (stopped) {return stopped;}
 		const detection = detectLoginState({ url, bodyText, hasQr: Boolean(this.loginPng), authenticated: /退出登录/.test(bodyText), now: Date.now(), expiresAt: this.loginExpiresAt });
-		if (detection.status === 'logged-in') {this.clearLoginMaterial();}
+		if (LOGIN_TERMINAL_STATES.has(detection.status)) {return this.publishTerminal(detection, 'login-inspection');}
 		if (detection.status === 'waiting-scan' && !this.loginPng) {return this.toLoginSnapshot({ status: 'loading', message: '正在等待官方登录二维码…' });}
 		return this.toLoginSnapshot(detection);
 	}
+
+	/** Navigation can close the page during any await; preserve its terminal reason and isolate older attempts. */
+	private inactiveLoginSnapshot(page: Page, generation: number): LoginSnapshot | undefined {
+		if (generation !== this.loginGeneration) {return this.cancelledLoginSnapshot();}
+		if (this.lastLoginSnapshot && LOGIN_TERMINAL_STATES.has(this.lastLoginSnapshot.status)) {return this.lastLoginSnapshot;}
+		if (page !== this.loginPage) {return this.cancelledLoginSnapshot();}
+		return undefined;
+	}
+	private cancelledLoginSnapshot(): LoginSnapshot { return { status: 'loading', message: '登录操作已取消。', qrRevision: 0, expiresAt: 0 }; }
 
 	private handleLoginNavigation(page: Page, url: string, generation: number): void {
 		if (generation !== this.loginGeneration || url === 'about:blank') {return;}
