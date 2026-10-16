@@ -21,6 +21,22 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Xiaohongshu Fisher",
+      "properties": {
+        "xiaohongshu-fisher.browserMode": {
+          "type": "string",
+          "enum": ["headless", "window"],
+          "enumDescriptions": [
+            "不显示浏览器窗口。登录和内容浏览共用同一会话。",
+            "使用普通 Chromium，需要图形桌面。启动或打开页面时可能出现窗口弹出、跳动或焦点切换；自动最小化也可能失败，影响使用体验。"
+          ],
+          "default": "headless",
+          "scope": "machine",
+          "description": "浏览器运行模式，默认使用不显示窗口的 headless 模式。更改后请重新加载 VS Code 窗口。"
+        }
+      }
+    },
     "commands": [
       {
         "command": "xiaohongshu-fisher.refreshHomeFeed",
@@ -130,6 +146,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
+    "@types/qrcode": "^1.5.6",
     "@types/vscode": "^1.140.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
@@ -143,6 +160,7 @@
     "serialize-javascript": "^7.0.6"
   },
   "dependencies": {
-    "playwright": "^1.63.0"
+    "playwright": "^1.63.0",
+    "qrcode": "^1.5.4"
   }
 }

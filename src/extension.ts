@@ -107,7 +107,8 @@ function getTrustedNoteUrl(value: unknown): vscode.Uri | undefined {
 
 export function activate(context: vscode.ExtensionContext): void {
 	const logger = new ExtensionLogger();
-	const session = new BrowserSession(context.globalStorageUri, logger);
+	const session = new BrowserSession(context.globalStorageUri, logger, () =>
+		vscode.workspace.getConfiguration('xiaohongshu-fisher').get<string>('browserMode', 'headless') === 'window' ? 'window' : 'headless');
 	const source = new XiaohongshuPageSource(session, logger);
 	const application = new ContentApplicationService(source, logger);
 	const loginQrImageProvider = new LoginQrImageProvider();
@@ -120,7 +121,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	};
 
 	context.subscriptions.push(logger, session, loginQrImageProvider, loginAssistant, reader, { dispose: () => application.dispose() }, ...Object.values(providers));
-	logger.info('Extension activated (headless browser, remote: %s).', Boolean(vscode.env.remoteName));
+	logger.info('Extension activated (remote: %s).', Boolean(vscode.env.remoteName));
 	context.subscriptions.push({ dispose: () => { void source.dispose(); } });
 	context.subscriptions.push(
 		vscode.window.createTreeView('xiaohongshuFisher.homeFeed', { treeDataProvider: providers.homeFeed }),
@@ -192,7 +193,7 @@ export function activate(context: vscode.ExtensionContext): void {
 				});
 				return;
 			}
-			void vscode.window.showErrorMessage(sourceError?.message ?? '无法启动无头登录流程。');
+			void vscode.window.showErrorMessage(sourceError?.message ?? '无法启动登录流程。');
 		}
 	});
 	registerCommand(context, 'refreshLoginQr', () => {

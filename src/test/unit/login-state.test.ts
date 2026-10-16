@@ -10,7 +10,7 @@ const base = {
 
 test('detects official QR waiting state and successful login text', () => {
 	assert.equal(detectLoginState({ ...base, bodyText: '扫码登录', hasQr: true }).status, 'waiting-scan');
-	assert.equal(detectLoginState({ ...base, bodyText: '我的主页 退出登录', hasQr: false }).status, 'logged-in');
+	assert.equal(detectLoginState({ ...base, bodyText: '退出登录', authenticated: true, hasQr: false }).status, 'logged-in');
 });
 
 test('keeps the page loading until a QR image is available', () => {

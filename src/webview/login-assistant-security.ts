@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import type { LoginSnapshot } from '../session/browser-session';
+import type { LoginSnapshot } from '../session/login-model';
+
+const OFFICIAL_HOME_URL = 'https://www.xiaohongshu.com/';
 
 export type LoginAssistantMessage = { command: 'ready' } | { command: 'show-qr' } | { command: 'refresh-qr' } | { command: 'open-official-page' } | { command: 'close' };
 
@@ -18,28 +20,16 @@ export function toLoginAssistantViewState(snapshot: LoginSnapshot): {
 	expiresAt: number;
 	pageUrl?: string;
 } {
-	const terminal = snapshot.status === 'access-restricted' || snapshot.status === 'page-error' || snapshot.status === 'verification-required';
-	const qrImage = !terminal && snapshot.qrImage && snapshot.qrImage.length <= 1_400_000 && /^[A-Za-z0-9+/=]+$/.test(snapshot.qrImage)
-		? snapshot.qrImage
-		: undefined;
+	const terminal = snapshot.status === 'logged-in' || snapshot.status === 'expired' || snapshot.status === 'qr-unavailable' || snapshot.status === 'access-restricted' || snapshot.status === 'page-error' || snapshot.status === 'verification-required';
+	const qrAvailable = !terminal && snapshot.status === 'waiting-scan' && Boolean(snapshot.qrPng);
+
 	return {
 		status: snapshot.status,
 		message: snapshot.message.slice(0, 500),
-		qrAvailable: Boolean(qrImage),
+		qrAvailable,
 		expiresAt: terminal ? 0 : (Number.isFinite(snapshot.expiresAt) ? snapshot.expiresAt : 0),
-		pageUrl: terminal && isTrustedOfficialPageUrl(snapshot.pageUrl) ? snapshot.pageUrl : undefined,
+		pageUrl: terminal && (snapshot.status === 'access-restricted' || snapshot.status === 'page-error') ? OFFICIAL_HOME_URL : undefined,
 	};
-}
-
-function isTrustedOfficialPageUrl(value: string | undefined): value is string {
-	if (!value) {return false;}
-	try {
-		const url = new URL(value);
-		return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
-			(url.hostname === 'xiaohongshu.com' || url.hostname.endsWith('.xiaohongshu.com'));
-	} catch {
-		return false;
-	}
 }
 
 function escapeHtml(value: string): string {
@@ -62,7 +52,7 @@ export function renderLoginAssistantHtml(snapshot: LoginSnapshot): string {
 		`script-src 'nonce-${scriptNonce}'`,
 	].join('; ');
 	const viewState = toLoginAssistantViewState(snapshot);
-	const terminal = viewState.status === 'access-restricted' || viewState.status === 'page-error' || viewState.status === 'verification-required';
+	const terminal = viewState.status === 'logged-in' || viewState.status === 'expired' || viewState.status === 'qr-unavailable' || viewState.status === 'access-restricted' || viewState.status === 'page-error' || viewState.status === 'verification-required';
 	const canRefresh = terminal || viewState.status === 'expired' || viewState.status === 'qr-unavailable';
 	const retryLabel = terminal ? '重新尝试登录' : '刷新二维码';
 	return `<!DOCTYPE html>
