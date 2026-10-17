@@ -60,6 +60,13 @@ function getIdentity(card: RawRecord): string | undefined {
 	return firstString(card, 'note_id', 'noteId', 'id');
 }
 
+/** Feed cards carry their identity on the envelope; detail cards may carry it inside. */
+export function getNoteId(value: unknown): string | undefined {
+	const record = asRecord(value);
+	const card = getRawCard(value);
+	return card ? getIdentity(card) ?? (record ? getIdentity(record) : undefined) : undefined;
+}
+
 function getImages(card: RawRecord): MediaItem[] {
 	const images = Array.isArray(card.image_list)
 		? card.image_list
@@ -125,9 +132,10 @@ function getMediaType(card: RawRecord, media: MediaItem[]): MediaType {
 }
 
 export function normalizeFeedItem(value: unknown): FeedItem | undefined {
+	if (asRecord(value)?.ignore === true) {return undefined;}
 	const card = getRawCard(value);
 	if (!card) {return undefined;}
-	const id = getIdentity(card);
+	const id = getNoteId(value);
 	if (!id) {return undefined;}
 
 	const excerpt = firstString(card, 'desc', 'description', 'content');
@@ -161,7 +169,7 @@ export function normalizeFeedItem(value: unknown): FeedItem | undefined {
 	};
 }
 
-export function normalizePageResponse(value: unknown): PageResult<FeedItem> & { hasMore: boolean } {
+export function normalizePageResponse(value: unknown, inferHasMoreFromItems = false): PageResult<FeedItem> & { hasMore: boolean } {
 	const root = asRecord(value);
 	const data = root ? firstRecord(root, 'data') ?? root : undefined;
 	if (!data) {
@@ -179,7 +187,11 @@ export function normalizePageResponse(value: unknown): PageResult<FeedItem> & { 
 		const normalized = normalizeFeedItem(item);
 		return normalized ? [normalized] : [];
 	});
-	const hasMore = data.has_more === true || data.hasMore === true;
+	// Home feed responses can omit an end flag; allow another page until an empty
+	// result or explicit false. Other endpoints keep their explicit flag contract.
+	const hasMore = typeof data.has_more === 'boolean' ? data.has_more
+		: typeof data.hasMore === 'boolean' ? data.hasMore
+			: inferHasMoreFromItems && items.length > 0;
 	return { items, hasMore };
 }
 

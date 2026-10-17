@@ -1,11 +1,12 @@
 import type { BrowserSession } from '../session/browser-session';
 import type { FeedItem, NoteDetail, NoteSourceContext, PageResult, SessionStatus } from '../models/content';
 import { SourceError } from '../models/source-error';
-import { getNoteToken, normalizeNoteDetail, normalizePageResponse } from './normalize';
+import { getNoteId, getNoteToken, normalizeNoteDetail, normalizePageResponse } from './normalize';
 import type { ContentSource } from './content-source';
-import type { Page, Response } from 'playwright';
+import type { Page, Request, Response } from 'playwright';
 import type { ExtensionLogger } from '../logging';
 import { classifyOfficialErrorRedirect, officialPageErrorSourceCode } from './official-page-error';
+import { readInitialHomeFeed, waitForHomeFeedReady } from './initial-home-feed';
 
 const SITE_ORIGIN = 'https://www.xiaohongshu.com';
 const HOME_FEED_PATH = '/api/sns/web/v1/homefeed';
@@ -104,25 +105,64 @@ export class XiaohongshuPageSource implements ContentSource {
 	}
 
 	private async navigateAndCapture(page: Page, url: string, path: string, signal?: AbortSignal): Promise<unknown> {
-		const responsePromise = this.waitForApiResponse(page, path, signal);
+		if (signal?.aborted) {throw new SourceError('unknown', '请求已取消。', false);}
+		const capture = new AbortController();
+		const captureSignal = signal ? AbortSignal.any([signal, capture.signal]) : capture.signal;
+		const responsePromise = this.waitForApiResponse(page, path, captureSignal);
 		try {
-			const [, response] = await Promise.all([
-				page.goto(url, { waitUntil: 'domcontentloaded', timeout: RESPONSE_TIMEOUT }),
-				responsePromise,
-			]);
-			return await this.readResponse(response);
+			const navigation = page.goto(url, { waitUntil: 'domcontentloaded', timeout: RESPONSE_TIMEOUT });
+			const apiPayload = Promise.all([navigation, responsePromise]).then(([, response]) => this.readResponse(response));
+			if (path !== HOME_FEED_PATH) {return await apiPayload;}
+			// The first page can be server-rendered without a homefeed request. Listen
+			// before navigating so either delivery path can supply the first page.
+			const initialPayload = navigation.then(async () => {
+				if (captureSignal.aborted) {return apiPayload;}
+				const payload = await readInitialHomeFeed(page, RESPONSE_LIMIT);
+				if (payload === undefined || captureSignal.aborted) {return apiPayload;}
+				this.logger?.debug('Loaded home feed from the official page initial state.');
+				return payload;
+			});
+			return await Promise.race([apiPayload, initialPayload]);
 		} catch (error) {
 			if (signal?.aborted) {throw new SourceError('unknown', '请求已取消。', false);}
 			if (error instanceof SourceError) {throw error;}
 			throw new SourceError('network', '无法从当前页面读取内容，请检查网络或登录状态。', true);
+		} finally {
+			// In particular, an initial-state success must remove the unused API
+			// listener and timer instead of leaving a late timeout behind.
+			capture.abort();
 		}
 	}
 
 	private async captureAfterScroll(page: Page, path: string, signal?: AbortSignal): Promise<unknown> {
-		const responsePromise = this.waitForApiResponse(page, path, signal);
+		const capture = new AbortController();
+		const captureSignal = signal ? AbortSignal.any([signal, capture.signal]) : capture.signal;
+		let requestStarted = false;
+		const onRequest = (request: Request): void => {
+			const url = new URL(request.url());
+			if (this.isAllowedHost(url.hostname) && url.pathname === path) {requestStarted = true;}
+		};
+		page.on('request', onRequest);
+		const responsePromise = this.waitForApiResponse(page, path, captureSignal);
 		try {
 			const [, response] = await Promise.all([
-				page.evaluate('window.scrollTo(0, document.body.scrollHeight)'),
+				(async () => {
+					if (path !== HOME_FEED_PATH) {
+						await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
+						return;
+					}
+					await waitForHomeFeedReady(page, RESPONSE_TIMEOUT);
+					// Virtualized pages can already be at the bottom, and their scroll
+					// handler can throttle an immediate next-page action. Retry the scroll
+					// only until the first request starts, so one action loads one page.
+					while (!captureSignal.aborted && !requestStarted) {
+						await page.evaluate(() => {
+							const bottom = Math.max(0, document.documentElement.scrollHeight - innerHeight);
+							window.scrollTo(0, scrollY >= bottom - 2 ? Math.max(0, bottom - 80) : bottom);
+						});
+						if (!requestStarted) {await page.waitForTimeout(300);}
+					}
+				})(),
 				responsePromise,
 			]);
 			return await this.readResponse(response);
@@ -130,6 +170,9 @@ export class XiaohongshuPageSource implements ContentSource {
 			if (signal?.aborted) {throw new SourceError('unknown', '请求已取消。', false);}
 			if (error instanceof SourceError) {throw error;}
 			throw new SourceError('network', '页面没有返回下一页内容，请稍后重试。', true);
+		} finally {
+			capture.abort();
+			page.off('request', onRequest);
 		}
 	}
 
@@ -198,9 +241,9 @@ export class XiaohongshuPageSource implements ContentSource {
 	}
 
 	private toPageResult(key: string, stream: Stream, payload: unknown): PageResult<FeedItem> {
-		const normalized = normalizePageResponse(payload);
+		const normalized = normalizePageResponse(payload, key === 'home' || key === 'explore');
 		for (const raw of this.getRawItems(payload)) {
-			const item = normalized.items.find(entry => entry.id === this.getRawId(raw));
+			const item = normalized.items.find(entry => entry.id === getNoteId(raw));
 			const token = getNoteToken(raw);
 			if (item && token.token) {this.noteTokens.set(item.id, { token: token.token, source: token.source });}
 		}
@@ -230,12 +273,6 @@ export class XiaohongshuPageSource implements ContentSource {
 	private getRawItems(value: unknown): unknown[] {
 		const root = value as { data?: { items?: unknown[] } };
 		return Array.isArray(root?.data?.items) ? root.data.items : [];
-	}
-
-	private getRawId(value: unknown): string | undefined {
-		const raw = value as { note_card?: { note_id?: unknown }; note_id?: unknown };
-		const noteId = raw?.note_card?.note_id ?? raw?.note_id;
-		return typeof noteId === 'string' ? noteId : undefined;
 	}
 
 	private async closeStream(key: string): Promise<void> {
