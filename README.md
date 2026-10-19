@@ -54,6 +54,12 @@ pnpm run test:unit
 
 完整 `pnpm test` 还需要可启动 VS Code Electron 的图形环境。
 
+项目使用 **ESLint** 检查代码质量和可读性，使用 **Prettier** 统一格式。`pnpm run lint` 会执行两项检查，出现警告也会失败。
+
+使用 `pnpm run format` 格式化源码及工具、编辑器配置；使用 `pnpm run lint:fix` 自动修复可处理的问题并格式化。`pnpm run format:check` 只检查格式，不修改文件。
+
+工作区推荐安装 ESLint 和 Prettier 扩展，并已为 TypeScript、JavaScript 和 JSON 启用保存时格式化。代码风格及注释要求见 [AGENTS.md](./AGENTS.md#code-style-and-readability)。
+
 ## 打包与安装 VSIX
 
 通过 pnpm 使用仓库中已锁定版本的 `vsce` 工具打包。更新仓库后，即使之前已经安装过依赖，也请重新运行 `pnpm install`，使本地依赖布局与仓库配置保持一致。
