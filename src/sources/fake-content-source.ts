@@ -1,4 +1,10 @@
-import type { FeedItem, NoteDetail, NoteSourceContext, PageResult, SessionStatus } from '../models/content';
+import type {
+	FeedItem,
+	NoteDetail,
+	NoteSourceContext,
+	PageResult,
+	SessionStatus,
+} from '../models/content';
 import type { ContentSource } from './content-source';
 
 const fixtures: FeedItem[] = [
@@ -37,13 +43,23 @@ export class FakeContentSource implements ContentSource {
 		return this.page(cursor);
 	}
 
-	async searchNotes(query: string, cursor?: string, _signal?: AbortSignal): Promise<PageResult<FeedItem>> {
-		const matches = fixtures.filter(item => `${item.title} ${item.excerpt ?? ''}`.includes(query));
+	async searchNotes(
+		query: string,
+		cursor?: string,
+		_signal?: AbortSignal,
+	): Promise<PageResult<FeedItem>> {
+		const matches = fixtures.filter((item) =>
+			`${item.title} ${item.excerpt ?? ''}`.includes(query),
+		);
 		return this.page(cursor, matches);
 	}
 
-	async getNoteDetail(id: string, _context?: NoteSourceContext, _signal?: AbortSignal): Promise<NoteDetail> {
-		const item = fixtures.find(fixture => fixture.id === id);
+	async getNoteDetail(
+		id: string,
+		_context?: NoteSourceContext,
+		_signal?: AbortSignal,
+	): Promise<NoteDetail> {
+		const item = fixtures.find((fixture) => fixture.id === id);
 		if (!item) {
 			throw Object.assign(new Error('Fixture note was not found'), { name: 'NotFoundError' });
 		}
@@ -53,7 +69,6 @@ export class FakeContentSource implements ContentSource {
 	async getSessionStatus(): Promise<SessionStatus> {
 		return 'logged-out';
 	}
-
 
 	async dispose(): Promise<void> {}
 

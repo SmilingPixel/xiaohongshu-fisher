@@ -11,5 +11,8 @@ test('formats printf-style logger placeholders before output', () => {
 
 test('preserves useful formatting for numeric and extra metadata values', () => {
 	assert.equal(formatLogMessage('QR wait timeout: %d ms.', [15_000]), 'QR wait timeout: 15000 ms.');
-	assert.equal(formatLogMessage('Operation completed.', ['extra', 42]), 'Operation completed. extra 42');
+	assert.equal(
+		formatLogMessage('Operation completed.', ['extra', 42]),
+		'Operation completed. extra 42',
+	);
 });

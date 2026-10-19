@@ -1,4 +1,10 @@
-import type { FeedItem, NoteDetail, NoteSourceContext, PageResult, SessionStatus } from '../models/content';
+import type {
+	FeedItem,
+	NoteDetail,
+	NoteSourceContext,
+	PageResult,
+	SessionStatus,
+} from '../models/content';
 
 export interface ContentSource {
 	getHomeFeed(cursor?: string, signal?: AbortSignal): Promise<PageResult<FeedItem>>;

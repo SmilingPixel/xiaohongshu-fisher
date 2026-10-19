@@ -22,7 +22,7 @@ suite('Extension Test Suite', () => {
 		await extension.activate();
 		const registered = new Set(await vscode.commands.getCommands(true));
 		const contributed = extension.packageJSON.contributes.commands.map(
-			(command: { command: string }) => command.command
+			(command: { command: string }) => command.command,
 		);
 
 		assert.deepStrictEqual(contributed, commandIds);
@@ -40,7 +40,7 @@ suite('Extension Test Suite', () => {
 				'xiaohongshuFisher.homeFeed',
 				'xiaohongshuFisher.exploreFeed',
 				'xiaohongshuFisher.searchResults',
-			]
+			],
 		);
 	});
 });

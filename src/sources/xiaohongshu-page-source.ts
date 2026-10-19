@@ -1,9 +1,15 @@
 import type { BrowserSession } from '../session/browser-session';
-import type { FeedItem, NoteDetail, NoteSourceContext, PageResult, SessionStatus } from '../models/content';
+import type {
+	FeedItem,
+	NoteDetail,
+	NoteSourceContext,
+	PageResult,
+	SessionStatus,
+} from '../models/content';
 import { SourceError } from '../models/source-error';
 import { getNoteId, getNoteToken, normalizeNoteDetail, normalizePageResponse } from './normalize';
 import type { ContentSource } from './content-source';
-import type { Page, Request, Response } from 'playwright';
+import type { Frame, Page, Request, Response } from 'playwright';
 import type { ExtensionLogger } from '../logging';
 import { classifyOfficialErrorRedirect, officialPageErrorSourceCode } from './official-page-error';
 import { readInitialHomeFeed, waitForHomeFeedReady } from './initial-home-feed';
@@ -21,12 +27,16 @@ interface Stream {
 	closed: boolean;
 }
 
+/** Reads official page responses, keeps pagination pages alive, and normalizes content for views. */
 export class XiaohongshuPageSource implements ContentSource {
 	private readonly streams = new Map<string, Stream>();
 	private readonly noteTokens = new Map<string, { token: string; source?: string }>();
 	private currentSearchKey?: string;
 
-	constructor(private readonly session: BrowserSession, private readonly logger?: ExtensionLogger) {}
+	constructor(
+		private readonly session: BrowserSession,
+		private readonly logger?: ExtensionLogger,
+	) {}
 
 	getHomeFeed(cursor?: string, signal?: AbortSignal): Promise<PageResult<FeedItem>> {
 		return this.loadStream('home', `${SITE_ORIGIN}/`, HOME_FEED_PATH, cursor, signal);
@@ -46,7 +56,11 @@ export class XiaohongshuPageSource implements ContentSource {
 		return this.loadStream(key, url, SEARCH_PATH, cursor, signal);
 	}
 
-	async getNoteDetail(id: string, context?: NoteSourceContext, signal?: AbortSignal): Promise<NoteDetail> {
+	async getNoteDetail(
+		id: string,
+		context?: NoteSourceContext,
+		signal?: AbortSignal,
+	): Promise<NoteDetail> {
 		this.logger?.debug('Loading note detail.');
 		const url = this.getDetailUrl(id, context);
 		const page = await this.session.openPage();
@@ -63,7 +77,7 @@ export class XiaohongshuPageSource implements ContentSource {
 	}
 
 	async dispose(): Promise<void> {
-		await Promise.all([...this.streams.keys()].map(key => this.closeStream(key)));
+		await Promise.all([...this.streams.keys()].map((key) => this.closeStream(key)));
 		this.noteTokens.clear();
 		await this.session.dispose();
 	}
@@ -73,9 +87,11 @@ export class XiaohongshuPageSource implements ContentSource {
 		url: string,
 		path: string,
 		cursor?: string,
-		signal?: AbortSignal
+		signal?: AbortSignal,
 	): Promise<PageResult<FeedItem>> {
-		if (signal?.aborted) {throw new SourceError('unknown', '请求已取消。', false);}
+		if (signal?.aborted) {
+			throw new SourceError('unknown', '请求已取消。', false);
+		}
 		if (cursor === undefined) {
 			this.logger?.debug('Opening content stream: %s.', key.startsWith('search:') ? 'search' : key);
 			await this.closeStream(key);
@@ -104,28 +120,50 @@ export class XiaohongshuPageSource implements ContentSource {
 		}
 	}
 
-	private async navigateAndCapture(page: Page, url: string, path: string, signal?: AbortSignal): Promise<unknown> {
-		if (signal?.aborted) {throw new SourceError('unknown', '请求已取消。', false);}
+	private async navigateAndCapture(
+		page: Page,
+		url: string,
+		path: string,
+		signal?: AbortSignal,
+	): Promise<unknown> {
+		if (signal?.aborted) {
+			throw new SourceError('unknown', '请求已取消。', false);
+		}
 		const capture = new AbortController();
 		const captureSignal = signal ? AbortSignal.any([signal, capture.signal]) : capture.signal;
 		const responsePromise = this.waitForApiResponse(page, path, captureSignal);
 		try {
-			const navigation = page.goto(url, { waitUntil: 'domcontentloaded', timeout: RESPONSE_TIMEOUT });
-			const apiPayload = Promise.all([navigation, responsePromise]).then(([, response]) => this.readResponse(response));
-			if (path !== HOME_FEED_PATH) {return await apiPayload;}
+			const navigation = page.goto(url, {
+				waitUntil: 'domcontentloaded',
+				timeout: RESPONSE_TIMEOUT,
+			});
+			const apiPayload = Promise.all([navigation, responsePromise]).then(([, response]) =>
+				this.readResponse(response),
+			);
+			if (path !== HOME_FEED_PATH) {
+				return await apiPayload;
+			}
 			// The first page can be server-rendered without a homefeed request. Listen
 			// before navigating so either delivery path can supply the first page.
 			const initialPayload = navigation.then(async () => {
-				if (captureSignal.aborted) {return apiPayload;}
+				if (captureSignal.aborted) {
+					return apiPayload;
+				}
 				const payload = await readInitialHomeFeed(page, RESPONSE_LIMIT);
-				if (payload === undefined || captureSignal.aborted) {return apiPayload;}
+				if (payload === undefined || captureSignal.aborted) {
+					return apiPayload;
+				}
 				this.logger?.debug('Loaded home feed from the official page initial state.');
 				return payload;
 			});
 			return await Promise.race([apiPayload, initialPayload]);
 		} catch (error) {
-			if (signal?.aborted) {throw new SourceError('unknown', '请求已取消。', false);}
-			if (error instanceof SourceError) {throw error;}
+			if (signal?.aborted) {
+				throw new SourceError('unknown', '请求已取消。', false);
+			}
+			if (error instanceof SourceError) {
+				throw error;
+			}
 			throw new SourceError('network', '无法从当前页面读取内容，请检查网络或登录状态。', true);
 		} finally {
 			// In particular, an initial-state success must remove the unused API
@@ -134,13 +172,19 @@ export class XiaohongshuPageSource implements ContentSource {
 		}
 	}
 
-	private async captureAfterScroll(page: Page, path: string, signal?: AbortSignal): Promise<unknown> {
+	private async captureAfterScroll(
+		page: Page,
+		path: string,
+		signal?: AbortSignal,
+	): Promise<unknown> {
 		const capture = new AbortController();
 		const captureSignal = signal ? AbortSignal.any([signal, capture.signal]) : capture.signal;
 		let requestStarted = false;
 		const onRequest = (request: Request): void => {
 			const url = new URL(request.url());
-			if (this.isAllowedHost(url.hostname) && url.pathname === path) {requestStarted = true;}
+			if (this.isAllowedHost(url.hostname) && url.pathname === path) {
+				requestStarted = true;
+			}
 		};
 		page.on('request', onRequest);
 		const responsePromise = this.waitForApiResponse(page, path, captureSignal);
@@ -160,15 +204,21 @@ export class XiaohongshuPageSource implements ContentSource {
 							const bottom = Math.max(0, document.documentElement.scrollHeight - innerHeight);
 							window.scrollTo(0, scrollY >= bottom - 2 ? Math.max(0, bottom - 80) : bottom);
 						});
-						if (!requestStarted) {await page.waitForTimeout(300);}
+						if (!requestStarted) {
+							await page.waitForTimeout(300);
+						}
 					}
 				})(),
 				responsePromise,
 			]);
 			return await this.readResponse(response);
 		} catch (error) {
-			if (signal?.aborted) {throw new SourceError('unknown', '请求已取消。', false);}
-			if (error instanceof SourceError) {throw error;}
+			if (signal?.aborted) {
+				throw new SourceError('unknown', '请求已取消。', false);
+			}
+			if (error instanceof SourceError) {
+				throw error;
+			}
 			throw new SourceError('network', '页面没有返回下一页内容，请稍后重试。', true);
 		} finally {
 			capture.abort();
@@ -179,39 +229,68 @@ export class XiaohongshuPageSource implements ContentSource {
 	private waitForApiResponse(page: Page, path: string, signal?: AbortSignal): Promise<Response> {
 		return new Promise<Response>((resolve, reject) => {
 			let settled = false;
+			// Responses, redirects, cancellation, and page closure share one cleanup path.
 			const finish = (error?: SourceError, response?: Response): void => {
-				if (settled) {return;}
+				if (settled) {
+					return;
+				}
 				settled = true;
 				clearTimeout(timeout);
 				page.off('response', onResponse);
 				page.off('framenavigated', onFrameNavigated);
 				page.off('close', onClose);
 				signal?.removeEventListener('abort', onAbort);
-				if (error) {reject(error);}
-				else if (response) {resolve(response);}
+				if (error) {
+					reject(error);
+				} else if (response) {
+					resolve(response);
+				}
 			};
 			const onResponse = (response: Response): void => {
 				try {
 					const url = new URL(response.url());
-					if (this.isAllowedHost(url.hostname) && url.pathname === path) {finish(undefined, response);}
-				} catch { /* Ignore malformed and unrelated response URLs. */ }
+					if (this.isAllowedHost(url.hostname) && url.pathname === path) {
+						finish(undefined, response);
+					}
+				} catch {
+					/* Ignore malformed and unrelated response URLs. */
+				}
 			};
-			const onFrameNavigated = (frame: import('playwright').Frame): void => {
-				if (frame !== page.mainFrame()) {return;}
+			const onFrameNavigated = (frame: Frame): void => {
+				if (frame !== page.mainFrame()) {
+					return;
+				}
 				const error = classifyOfficialErrorRedirect(frame.url());
 				if (error) {
-					this.logger?.warn('Official page redirect detected (operation: content-load, kind: %s, code: %s).', error.kind, error.platformCode ?? 'unknown');
+					this.logger?.warn(
+						'Official page redirect detected (operation: content-load, kind: %s, code: %s).',
+						error.kind,
+						error.platformCode ?? 'unknown',
+					);
 					finish(new SourceError(officialPageErrorSourceCode(error), error.message, false));
 				}
 			};
 			const onAbort = (): void => finish(new SourceError('unknown', '请求已取消。', false));
-			const onClose = (): void => finish(new SourceError('network', '内容页面已关闭，无法继续读取。', true));
-			const timeout = setTimeout(() => finish(new SourceError('network', '页面没有在规定时间内返回内容，请检查网络或登录状态。', true)), RESPONSE_TIMEOUT);
+			const onClose = (): void =>
+				finish(new SourceError('network', '内容页面已关闭，无法继续读取。', true));
+			const timeout = setTimeout(
+				() =>
+					finish(
+						new SourceError(
+							'network',
+							'页面没有在规定时间内返回内容，请检查网络或登录状态。',
+							true,
+						),
+					),
+				RESPONSE_TIMEOUT,
+			);
 			page.on('response', onResponse);
 			page.on('framenavigated', onFrameNavigated);
 			page.on('close', onClose);
 			signal?.addEventListener('abort', onAbort, { once: true });
-			if (signal?.aborted) {onAbort();}
+			if (signal?.aborted) {
+				onAbort();
+			}
 		});
 	}
 
@@ -219,9 +298,19 @@ export class XiaohongshuPageSource implements ContentSource {
 		if (!this.isAllowedHost(new URL(response.url()).hostname)) {
 			throw new SourceError('access-restricted', '页面返回了非官方域名的数据。', false);
 		}
-		if (response.status() === 401 || response.status() === 403 || response.status() === 429 || response.status() === 461 || response.status() === 471) {
+		if (
+			response.status() === 401 ||
+			response.status() === 403 ||
+			response.status() === 429 ||
+			response.status() === 461 ||
+			response.status() === 471
+		) {
 			this.logger?.warn('Official API response was restricted (status %s).', response.status());
-			throw new SourceError('access-restricted', '小红书暂时限制了此页面访问，请在官方页面处理后再试。', false);
+			throw new SourceError(
+				'access-restricted',
+				'小红书暂时限制了此页面访问，请在官方页面处理后再试。',
+				false,
+			);
 		}
 		const contentLength = Number(response.headers()['content-length'] ?? 0);
 		if (contentLength > RESPONSE_LIMIT) {
@@ -231,11 +320,17 @@ export class XiaohongshuPageSource implements ContentSource {
 			const payload: unknown = await response.json();
 			const root = payload as { success?: unknown; code?: unknown; data?: unknown };
 			if (root?.success === false || (root?.code !== undefined && String(root.code) !== '0')) {
-				throw new SourceError('access-restricted', '小红书未提供此页面内容，请检查登录状态或稍后再试。', false);
+				throw new SourceError(
+					'access-restricted',
+					'小红书未提供此页面内容，请检查登录状态或稍后再试。',
+					false,
+				);
 			}
 			return payload;
 		} catch (error) {
-			if (error instanceof SourceError) {throw error;}
+			if (error instanceof SourceError) {
+				throw error;
+			}
 			throw new SourceError('parse-failure', '页面响应格式暂时无法读取。', false);
 		}
 	}
@@ -243,13 +338,20 @@ export class XiaohongshuPageSource implements ContentSource {
 	private toPageResult(key: string, stream: Stream, payload: unknown): PageResult<FeedItem> {
 		const normalized = normalizePageResponse(payload, key === 'home' || key === 'explore');
 		for (const raw of this.getRawItems(payload)) {
-			const item = normalized.items.find(entry => entry.id === getNoteId(raw));
+			const item = normalized.items.find((entry) => entry.id === getNoteId(raw));
 			const token = getNoteToken(raw);
-			if (item && token.token) {this.noteTokens.set(item.id, { token: token.token, source: token.source });}
+			if (item && token.token) {
+				this.noteTokens.set(item.id, { token: token.token, source: token.source });
+			}
 		}
 		stream.nextIndex += 1;
-		this.logger?.debug('Normalized %s feed page %s (%s items, has more: %s).',
-			key.startsWith('search:') ? 'search' : key, stream.nextIndex, normalized.items.length, normalized.hasMore);
+		this.logger?.debug(
+			'Normalized %s feed page %s (%s items, has more: %s).',
+			key.startsWith('search:') ? 'search' : key,
+			stream.nextIndex,
+			normalized.items.length,
+			normalized.hasMore,
+		);
 		return {
 			items: normalized.items,
 			nextCursor: normalized.hasMore ? String(stream.nextIndex) : undefined,
@@ -277,7 +379,9 @@ export class XiaohongshuPageSource implements ContentSource {
 
 	private async closeStream(key: string): Promise<void> {
 		const stream = this.streams.get(key);
-		if (!stream) {return;}
+		if (!stream) {
+			return;
+		}
 		this.streams.delete(key);
 		stream.closed = true;
 		await stream.page.close().catch(() => undefined);

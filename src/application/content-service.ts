@@ -16,14 +16,17 @@ export interface FeedState {
 }
 
 type StateListener = (key: FeedKey, state: Readonly<FeedState>) => void;
-type FeedLoader = (cursor: string | undefined, signal: AbortSignal) => Promise<PageResult<FeedItem>>;
+type FeedLoader = (
+	cursor: string | undefined,
+	signal: AbortSignal,
+) => Promise<PageResult<FeedItem>>;
 
 function emptyState(): FeedState {
 	return { items: [], isLoading: false, isLoadingMore: false };
 }
 
 function mergeById(existing: FeedItem[], incoming: FeedItem[]): FeedItem[] {
-	const items = new Map(existing.map(item => [item.id, item]));
+	const items = new Map(existing.map((item) => [item.id, item]));
 	for (const item of incoming) {
 		if (!items.has(item.id)) {
 			items.set(item.id, item);
@@ -32,6 +35,7 @@ function mergeById(existing: FeedItem[], incoming: FeedItem[]): FeedItem[] {
 	return [...items.values()];
 }
 
+/** Owns per-feed requests and publishes snapshots while keeping loaded items through failures. */
 export class ContentApplicationService {
 	private readonly states: Record<FeedKey, FeedState> = {
 		home: emptyState(),
@@ -41,7 +45,10 @@ export class ContentApplicationService {
 	private readonly requests = new Map<FeedKey, AbortController>();
 	private readonly listeners = new Set<StateListener>();
 
-	constructor(private readonly source: ContentSource, private readonly logger?: ExtensionLogger) {}
+	constructor(
+		private readonly source: ContentSource,
+		private readonly logger?: ExtensionLogger,
+	) {}
 
 	getState(key: FeedKey): Readonly<FeedState> {
 		return { ...this.states[key], items: [...this.states[key].items] };
@@ -57,7 +64,9 @@ export class ContentApplicationService {
 	}
 
 	refreshExploreFeed(): Promise<void> {
-		return this.loadFirst('explore', (cursor, signal) => this.source.getExploreFeed(cursor, signal));
+		return this.loadFirst('explore', (cursor, signal) =>
+			this.source.getExploreFeed(cursor, signal),
+		);
 	}
 
 	searchNotes(query: string): Promise<void> {
@@ -69,7 +78,11 @@ export class ContentApplicationService {
 		this.cancel('search');
 		this.states.search = { ...emptyState(), query: normalizedQuery };
 		this.publish('search');
-		return this.loadFirst('search', (cursor, signal) => this.source.searchNotes(normalizedQuery, cursor, signal), true);
+		return this.loadFirst(
+			'search',
+			(cursor, signal) => this.source.searchNotes(normalizedQuery, cursor, signal),
+			true,
+		);
 	}
 
 	loadMore(key: FeedKey): Promise<void> {
@@ -85,19 +98,28 @@ export class ContentApplicationService {
 		state.error = undefined;
 		this.publish(key);
 
-		return this.runRequest(key, controller, async () => {
-			const page = await this.getLoader(key)(cursor, controller.signal);
-			if (this.requests.get(key) !== controller || controller.signal.aborted) {
-				return;
-			}
-			const current = this.states[key];
-			current.items = mergeById(current.items, page.items);
-			current.nextCursor = page.nextCursor;
-			current.lastUpdatedAt = Date.now();
-		}, true);
+		return this.runRequest(
+			key,
+			controller,
+			async () => {
+				const page = await this.getLoader(key)(cursor, controller.signal);
+				if (this.requests.get(key) !== controller || controller.signal.aborted) {
+					return;
+				}
+				const current = this.states[key];
+				current.items = mergeById(current.items, page.items);
+				current.nextCursor = page.nextCursor;
+				current.lastUpdatedAt = Date.now();
+			},
+			true,
+		);
 	}
 
-	async getNoteDetail(id: string, context?: NoteSourceContext, signal?: AbortSignal): Promise<NoteDetail> {
+	async getNoteDetail(
+		id: string,
+		context?: NoteSourceContext,
+		signal?: AbortSignal,
+	): Promise<NoteDetail> {
 		try {
 			return await this.source.getNoteDetail(id, context, signal);
 		} catch (error) {
@@ -121,6 +143,7 @@ export class ContentApplicationService {
 		if (!alreadyCancelled) {
 			this.cancel(key);
 		}
+		// Controller identity prevents a cancelled request from overwriting a newer refresh or search.
 		const controller = new AbortController();
 		this.requests.set(key, controller);
 		const state = this.states[key];
@@ -129,23 +152,28 @@ export class ContentApplicationService {
 		state.error = undefined;
 		this.publish(key);
 
-		return this.runRequest(key, controller, async () => {
-			const page = await loader(undefined, controller.signal);
-			if (this.requests.get(key) !== controller || controller.signal.aborted) {
-				return;
-			}
-			const current = this.states[key];
-			current.items = mergeById([], page.items);
-			current.nextCursor = page.nextCursor;
-			current.lastUpdatedAt = Date.now();
-		}, false);
+		return this.runRequest(
+			key,
+			controller,
+			async () => {
+				const page = await loader(undefined, controller.signal);
+				if (this.requests.get(key) !== controller || controller.signal.aborted) {
+					return;
+				}
+				const current = this.states[key];
+				current.items = mergeById([], page.items);
+				current.nextCursor = page.nextCursor;
+				current.lastUpdatedAt = Date.now();
+			},
+			false,
+		);
 	}
 
 	private async runRequest(
 		key: FeedKey,
 		controller: AbortController,
 		operation: () => Promise<void>,
-		isLoadingMore: boolean
+		isLoadingMore: boolean,
 	): Promise<void> {
 		try {
 			this.logger?.debug('Loading %s feed%s.', key, isLoadingMore ? ' next page' : '');
@@ -160,6 +188,7 @@ export class ContentApplicationService {
 				this.states[key].error = toSourceError(error);
 			}
 		} finally {
+			// A late completion must not clear the loading state of its replacement request.
 			if (this.requests.get(key) === controller) {
 				this.requests.delete(key);
 				this.states[key].isLoading = false;

@@ -15,7 +15,7 @@ export class SourceError extends Error {
 	constructor(
 		readonly code: SourceErrorCode,
 		message: string,
-		readonly retryable: boolean
+		readonly retryable: boolean,
 	) {
 		super(message);
 		this.name = 'SourceError';

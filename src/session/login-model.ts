@@ -19,5 +19,10 @@ export interface LoginSnapshot {
 }
 
 export const LOGIN_TERMINAL_STATES = new Set<LoginStatus>([
-	'logged-in', 'expired', 'qr-unavailable', 'access-restricted', 'page-error', 'verification-required',
+	'logged-in',
+	'expired',
+	'qr-unavailable',
+	'access-restricted',
+	'page-error',
+	'verification-required',
 ]);
