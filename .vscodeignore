@@ -8,6 +8,9 @@ docs/**
 .git/**
 .github/**
 .gitignore
+.editorconfig
+.prettierignore
+.prettierrc.json
 .npmrc
 pnpm-lock.yaml
 pnpm-workspace.yaml

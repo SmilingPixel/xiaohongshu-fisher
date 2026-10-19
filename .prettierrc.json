@@ -1,0 +1,15 @@
+{
+	"useTabs": true,
+	"tabWidth": 2,
+	"printWidth": 100,
+	"singleQuote": true,
+	"semi": true,
+	"trailingComma": "all",
+	"endOfLine": "lf",
+	"overrides": [
+		{
+			"files": ["tsconfig.json", ".vscode/*.json"],
+			"options": { "parser": "jsonc" }
+		}
+	]
+}
