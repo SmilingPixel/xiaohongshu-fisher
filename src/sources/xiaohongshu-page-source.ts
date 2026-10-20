@@ -16,7 +16,7 @@ import { readInitialHomeFeed, waitForHomeFeedReady } from './initial-home-feed';
 
 const SITE_ORIGIN = 'https://www.xiaohongshu.com';
 const HOME_FEED_PATH = '/api/sns/web/v1/homefeed';
-const SEARCH_PATH = '/api/sns/web/v1/search/notes';
+const SEARCH_PATH = '/api/sns/web/v2/search/notes';
 const DETAIL_PATH = '/api/sns/web/v1/feed';
 const RESPONSE_LIMIT = 5 * 1024 * 1024;
 const RESPONSE_TIMEOUT = 20_000;
