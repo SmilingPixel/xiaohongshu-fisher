@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { NoteDetail } from '../../models/content';
-import { isReaderMessage, renderNoteDetail, renderReaderHtml, trustedImageUrl } from '../../webview/reader-security';
+import {
+	isReaderMessage,
+	renderNoteDetail,
+	renderReaderHtml,
+	trustedImageUrl,
+} from '../../webview/reader-security';
 
 const detail: NoteDetail = {
 	id: 'note-1',
@@ -31,7 +36,10 @@ test('renders note fields as text and only allows trusted HTTPS image hosts', ()
 	assert.match(html, /safe text<br>&lt;img src=x onerror=alert\(1\)&gt;/);
 	assert.match(html, /https:\/\/sns-img\.xhscdn\.com\/image\.jpg/);
 	assert.doesNotMatch(html, /attacker\.example|javascript:/);
-	assert.equal(trustedImageUrl('https://sub.xiaohongshu.com/image.jpg'), 'https://sub.xiaohongshu.com/image.jpg');
+	assert.equal(
+		trustedImageUrl('https://sub.xiaohongshu.com/image.jpg'),
+		'https://sub.xiaohongshu.com/image.jpg',
+	);
 	assert.equal(trustedImageUrl('https://xiaohongshu.com.attacker.example/image.jpg'), undefined);
 	assert.equal(trustedImageUrl('http://sns-img.xhscdn.com/image.jpg'), undefined);
 });

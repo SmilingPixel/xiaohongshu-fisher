@@ -1,49 +1,42 @@
 # Repository Guidance
 
-This repository contains **Xiaohongshu Fisher**, a Visual Studio Code extension written in TypeScript. Follow the VS Code Extension API and Extension Guidelines, and keep changes consistent with the existing project structure and the design documents in `docs/`.
+**Xiaohongshu Fisher** is a TypeScript VS Code extension. Follow the VS Code Extension API, existing module boundaries, and designs in `docs/`.
 
 ## Package Management
 
-- Use **pnpm** for dependency installation, scripts, tests, and packaging. Do not use npm or yarn for routine project work.
-- Use `pnpm install` to install dependencies and `pnpm add` / `pnpm add -D` to add runtime or development dependencies.
-- Keep `pnpm-lock.yaml` synchronized with dependency changes and include it in the same change.
-- Prefer the scripts declared in `package.json`:
-  - `pnpm run compile` for TypeScript compilation.
-  - `pnpm run lint` for linting.
-  - `pnpm test` for extension tests (the pretest hook compiles and lints first).
-  - `pnpm run watch` for local development.
+- Use **pnpm** for dependencies, scripts, tests, and packaging; do not use npm or yarn. Commit `pnpm-lock.yaml` with dependency changes.
+- Prefer the scripts in `package.json`; use `pnpm run watch` for development.
 
-## VS Code Extension Conventions
+## Code Style and Readability
 
-- Declare user-facing commands, views, menus, configuration, and activation behavior in `package.json` contributions. Keep command IDs namespaced with `xiaohongshu-fisher.`.
-- Keep activation lightweight. Initialize services when needed, avoid unnecessary network or browser work during activation, and dispose event listeners, providers, panels, processes, and other resources through `ExtensionContext.subscriptions` or an explicit `deactivate` cleanup path.
-- Separate extension-host orchestration, view presentation, content-source/platform access, session management, and WebView rendering. Do not put platform parsing or network access directly in TreeDataProviders or command callbacks.
-- Use VS Code APIs for user interaction, configuration, secrets, logging, external links, and progress reporting instead of implementing parallel UI or storage mechanisms.
-- Respect cancellation and avoid duplicate concurrent loads. Preserve existing view state when a refresh or next-page request fails.
+- Use **Prettier** for formatting and **ESLint** for code quality. Follow `.prettierrc.json` and `.editorconfig`; avoid duplicating their rules here or adding competing formatters.
+- Put each statement on its own line, use braces and multiline blocks for control flow, and separate methods and logical phases with blank lines.
+- Avoid nested ternaries and dense conditions. Prefer named values, early returns, and focused helpers; keep shared state definitions in their owning module.
+- Preserve branch precedence, cancellation checks, and cleanup order when refactoring. Explain module responsibilities and non-obvious lifecycle, pagination, security, or recovery behavior; avoid comments that repeat the code.
+- Mark complete WebView templates with `/* HTML */` for formatting. Review embedded scripts manually because ESLint does not inspect template contents.
+- Use `import type` for type-only dependencies and explicit types at module boundaries. Scope necessary lint exceptions to the relevant line and explain them.
+- Use `pnpm run format` to format, `pnpm run format:check` to check, and `pnpm run lint:fix` to apply automatic fixes. Resolve remaining diagnostics rather than suppressing them.
 
-## Documentation and Comments
+## Documentation
 
-- Write source code, identifiers, code comments, JSDoc, diagnostics, and developer-facing documentation in English, following common open-source project conventions. User-facing product text may remain localized where the feature requires it.
-- Add a concise module or class comment when it explains the module's main responsibility or the relationship between its collaborators. Document the broad functional flow at the boundary where a reader would otherwise need to inspect several files.
-- Add extra comments for complex business logic, platform-specific behavior, security boundaries, unusual workarounds, lifecycle constraints, pagination/state transitions, and error recovery. Explain the reason and invariant being preserved, not a restatement of the code.
-- Keep comments accurate and maintainable. Update or remove comments when behavior changes, and avoid comments that merely narrate obvious statements.
+- Write `README.md` in Chinese. Write code, identifiers, comments, diagnostics, and other developer documentation in English; product text may be localized.
+- Update comments and documentation when behavior changes; keep explanations concise and accurate.
 
-## Security and Privacy
+## Extension Architecture
 
-- Treat cookies, browser profiles, authentication tokens, request signatures, and personal content as sensitive. Never log them, place them in workspace settings, or send them to WebViews.
-- Store user secrets with VS Code `SecretStorage`; keep browser session data in an extension-owned local profile with a clear user-controlled cleanup path.
-- Treat content and URLs from the platform as untrusted input. Escape or sanitize rendered content, validate links, and use a restrictive Content Security Policy for WebViews. Do not load remote scripts into a WebView.
-- Do not add credential collection, automated posting/commenting, CAPTCHA bypass, fingerprint spoofing, or other mechanisms designed to evade platform controls.
+- Declare commands, views, menus, settings, and activation behavior in `package.json`; prefix command IDs with `xiaohongshu-fisher.`.
+- Keep activation lightweight and browser/network work lazy. Dispose listeners, providers, panels, and processes through `ExtensionContext.subscriptions` or explicit cleanup.
+- Separate orchestration, views, platform access, sessions, and WebView rendering. Normalize platform responses into internal models; keep parsing and network access out of TreeDataProviders and command callbacks.
+- Use VS Code APIs for interaction, configuration, storage, external links, and progress. Respect cancellation, prevent duplicate concurrent loads, and preserve existing view state on refresh or pagination failure.
 
-## Logging
+## Security and Logging
 
-- Use the existing `ExtensionLogger` and its VS Code output channel for diagnostics. Do not introduce ad-hoc `console` logging or additional logger implementations.
-- Write log messages in English and use consistent, structured wording. Include the operation, state, error category, or other safe metadata needed to diagnose remote development issues.
-- Never log secrets, cookies, tokens, QR data, response bodies, personal content, or sensitive URL query parameters.
+- Store secrets in VS Code `SecretStorage` and session data in an extension-owned profile with user-controlled cleanup. Never expose credentials, cookies, profiles, tokens, or signatures in workspace settings or WebViews.
+- Treat platform content and URLs as untrusted: escape rendered content, validate links, enforce a restrictive CSP, and never load remote WebView scripts.
+- Use the existing `ExtensionLogger` and output channel, with structured English messages. Never log secrets, QR data, response bodies, personal content, or sensitive URL query parameters; do not add `console` logging or another logger.
+- Do not add credential collection, automated posting/commenting, CAPTCHA bypass, fingerprint spoofing, or mechanisms that evade platform controls.
 
-## TypeScript and Tests
+## Validation
 
-- Keep TypeScript types explicit at module boundaries. Normalize platform-specific responses into internal models before passing data to views or WebViews.
-- Prefer small, focused modules and follow established formatting, naming, and error-handling patterns in the codebase.
-- Add or update tests for meaningful behavior changes, especially pagination, session handling, parsing, and WebView message validation. Use the VS Code extension test harness for extension-host behavior.
-- Before finishing code changes, run the relevant pnpm checks and report any checks that could not run.
+- Add or update tests for meaningful behavior changes, especially pagination, sessions, parsing, and WebView messages. Use the VS Code test harness for extension-host behavior.
+- After code changes, run `pnpm run compile`, `pnpm run lint` (ESLint plus formatting, no warnings), and relevant tests. `pnpm test` also runs compilation and lint first. Report checks that could not run.

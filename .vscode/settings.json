@@ -1,11 +1,18 @@
 // Place your settings in this file to overwrite default and user settings.
 {
 	"files.exclude": {
-		"out": false // set this to true to hide the "out" folder with the compiled JS files
+		"out": false, // set this to true to hide the "out" folder with the compiled JS files
 	},
 	"search.exclude": {
-		"out": true // set this to false to include "out" folder in search results
+		"out": true, // set this to false to include "out" folder in search results
 	},
-	// Turn off tsc task auto detection since we have the necessary tasks as npm scripts
-	"js/ts.tsc.autoDetect": "off"
+	// Use the repository's pnpm scripts for TypeScript tasks.
+	"js/ts.tsc.autoDetect": "off",
+	"[typescript][javascript][json][jsonc]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode",
+		"editor.formatOnSave": true,
+		"editor.insertSpaces": false,
+		"editor.tabSize": 2,
+		"editor.detectIndentation": false,
+	},
 }

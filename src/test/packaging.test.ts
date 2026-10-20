@@ -23,17 +23,23 @@ test('packaged files load the browser library and its CLI in isolation', async (
 			await copyFile(path.join(root, file), destination);
 		}
 		const probe = path.join(directory, 'verify-runtime.cjs');
-		await writeFile(probe, `
+		await writeFile(
+			probe,
+			`
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 assert.equal(typeof chromium.launchPersistentContext, 'function');
 const manifest = require('./package.json');
 assert.ok(require('node:fs').existsSync(require.resolve(manifest.main)));
-`);
+`,
+		);
 		const env = { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' };
 		await execFileAsync(process.execPath, [probe], { cwd: directory, env });
-		const { stdout } = await execFileAsync(process.execPath,
-			[path.join(directory, 'node_modules/playwright/cli.js'), '--version'], { cwd: directory, env });
+		const { stdout } = await execFileAsync(
+			process.execPath,
+			[path.join(directory, 'node_modules/playwright/cli.js'), '--version'],
+			{ cwd: directory, env },
+		);
 		assert.match(stdout, /^Version \d+\.\d+\.\d+/);
 	} finally {
 		await rm(directory, { recursive: true, force: true });

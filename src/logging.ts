@@ -13,10 +13,23 @@ export class ExtensionLogger implements vscode.Disposable {
 		this.channel = vscode.window.createOutputChannel('Xiaohongshu Fisher', { log: true });
 	}
 
-	debug(message: string, ...args: unknown[]): void { this.channel.debug(formatLogMessage(message, args)); }
-	info(message: string, ...args: unknown[]): void { this.channel.info(formatLogMessage(message, args)); }
-	warn(message: string, ...args: unknown[]): void { this.channel.warn(formatLogMessage(message, args)); }
-	error(message: string, ...args: unknown[]): void { this.channel.error(formatLogMessage(message, args)); }
+	debug(message: string, ...args: unknown[]): void {
+		this.channel.debug(formatLogMessage(message, args));
+	}
 
-	dispose(): void { this.channel.dispose(); }
+	info(message: string, ...args: unknown[]): void {
+		this.channel.info(formatLogMessage(message, args));
+	}
+
+	warn(message: string, ...args: unknown[]): void {
+		this.channel.warn(formatLogMessage(message, args));
+	}
+
+	error(message: string, ...args: unknown[]): void {
+		this.channel.error(formatLogMessage(message, args));
+	}
+
+	dispose(): void {
+		this.channel.dispose();
+	}
 }

@@ -3,18 +3,26 @@ import { validateQrPng } from './login-qr-image';
 
 const QR_IMAGE_PATH = '/login-qr.png';
 
+/** Exposes a copied, in-memory QR image to VS Code's image editor and erases it on cleanup. */
 export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.Disposable {
 	private readonly changeEmitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
 	readonly onDidChangeFile = this.changeEmitter.event;
 	private image?: Uint8Array;
 	private modifiedAt = Date.now();
 	private readonly fileSystemRegistration: vscode.Disposable;
-	private readonly uri = vscode.Uri.from({ scheme: 'xiaohongshu-fisher-login', path: QR_IMAGE_PATH });
+	private readonly uri = vscode.Uri.from({
+		scheme: 'xiaohongshu-fisher-login',
+		path: QR_IMAGE_PATH,
+	});
 
 	constructor() {
-		this.fileSystemRegistration = vscode.workspace.registerFileSystemProvider('xiaohongshu-fisher-login', this, {
-			isReadonly: true,
-		});
+		this.fileSystemRegistration = vscode.workspace.registerFileSystemProvider(
+			'xiaohongshu-fisher-login',
+			this,
+			{
+				isReadonly: true,
+			},
+		);
 	}
 
 	getUri(): vscode.Uri {
@@ -23,7 +31,10 @@ export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.D
 
 	setImage(value: Uint8Array | undefined): void {
 		const image = validateQrPng(value);
-		if (!image) {this.clear(); return;}
+		if (!image) {
+			this.clear();
+			return;
+		}
 		this.image?.fill(0);
 		this.image = image;
 		this.modifiedAt = Math.max(Date.now(), this.modifiedAt + 1);
@@ -31,7 +42,9 @@ export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.D
 	}
 
 	clear(): void {
-		if (!this.image) {return;}
+		if (!this.image) {
+			return;
+		}
 		this.image.fill(0);
 		this.image = undefined;
 		this.modifiedAt = Math.max(Date.now(), this.modifiedAt + 1);
@@ -45,7 +58,9 @@ export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.D
 
 	stat(uri: vscode.Uri): vscode.FileStat {
 		this.assertUri(uri);
-		if (!this.image) {throw vscode.FileSystemError.FileNotFound(uri);}
+		if (!this.image) {
+			throw vscode.FileSystemError.FileNotFound(uri);
+		}
 		return {
 			type: vscode.FileType.File,
 			ctime: this.modifiedAt,
@@ -65,7 +80,9 @@ export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.D
 
 	readFile(uri: vscode.Uri): Uint8Array {
 		this.assertUri(uri);
-		if (!this.image) {throw vscode.FileSystemError.FileNotFound(uri);}
+		if (!this.image) {
+			throw vscode.FileSystemError.FileNotFound(uri);
+		}
 		return Uint8Array.from(this.image);
 	}
 
@@ -94,10 +111,14 @@ export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.D
 	}
 
 	private closeQrEditorTabs(): void {
-		const tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs.filter(tab => {
-			const input = tab.input as { uri?: vscode.Uri };
-			return input.uri?.toString() === this.uri.toString();
-		}));
-		if (tabs.length > 0) {void vscode.window.tabGroups.close(tabs);}
+		const tabs = vscode.window.tabGroups.all.flatMap((group) =>
+			group.tabs.filter((tab) => {
+				const input = tab.input as { uri?: vscode.Uri };
+				return input.uri?.toString() === this.uri.toString();
+			}),
+		);
+		if (tabs.length > 0) {
+			void vscode.window.tabGroups.close(tabs);
+		}
 	}
 }
