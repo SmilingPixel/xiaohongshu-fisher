@@ -13,6 +13,7 @@ import type { Frame, Page, Request, Response } from 'playwright';
 import type { ExtensionLogger } from '../logging';
 import { classifyOfficialErrorRedirect, officialPageErrorSourceCode } from './official-page-error';
 import { readInitialHomeFeed, waitForHomeFeedReady } from './initial-home-feed';
+import { readInitialNoteDetail } from './initial-note-detail';
 
 const SITE_ORIGIN = 'https://www.xiaohongshu.com';
 const HOME_FEED_PATH = '/api/sns/web/v1/homefeed';
@@ -65,7 +66,9 @@ export class XiaohongshuPageSource implements ContentSource {
 		const url = this.getDetailUrl(id, context);
 		const page = await this.session.openPage();
 		try {
-			const payload = await this.navigateAndCapture(page, url, DETAIL_PATH, signal);
+			const payload = await this.navigateAndCapture(page, url, DETAIL_PATH, signal, () =>
+				readInitialNoteDetail(page, id, RESPONSE_LIMIT),
+			);
 			return normalizeNoteDetail(payload);
 		} finally {
 			await page.close().catch(() => undefined);
@@ -99,7 +102,9 @@ export class XiaohongshuPageSource implements ContentSource {
 			const stream: Stream = { page, nextIndex: 0, closed: false };
 			this.streams.set(key, stream);
 			try {
-				const payload = await this.navigateAndCapture(page, url, path, signal);
+				const readInitial =
+					path === HOME_FEED_PATH ? () => readInitialHomeFeed(page, RESPONSE_LIMIT) : undefined;
+				const payload = await this.navigateAndCapture(page, url, path, signal, readInitial);
 				return this.toPageResult(key, stream, payload);
 			} catch (error) {
 				await this.closeStream(key);
@@ -125,6 +130,7 @@ export class XiaohongshuPageSource implements ContentSource {
 		url: string,
 		path: string,
 		signal?: AbortSignal,
+		readInitial?: () => Promise<unknown | undefined>,
 	): Promise<unknown> {
 		if (signal?.aborted) {
 			throw new SourceError('unknown', '请求已取消。', false);
@@ -140,20 +146,20 @@ export class XiaohongshuPageSource implements ContentSource {
 			const apiPayload = Promise.all([navigation, responsePromise]).then(([, response]) =>
 				this.readResponse(response),
 			);
-			if (path !== HOME_FEED_PATH) {
+			if (!readInitial) {
 				return await apiPayload;
 			}
-			// The first page can be server-rendered without a homefeed request. Listen
+			// Feeds and note details can be server-rendered without an API request. Listen
 			// before navigating so either delivery path can supply the first page.
 			const initialPayload = navigation.then(async () => {
 				if (captureSignal.aborted) {
 					return apiPayload;
 				}
-				const payload = await readInitialHomeFeed(page, RESPONSE_LIMIT);
+				const payload = await readInitial();
 				if (payload === undefined || captureSignal.aborted) {
 					return apiPayload;
 				}
-				this.logger?.debug('Loaded home feed from the official page initial state.');
+				this.logger?.debug('Loaded content from the official page initial state.');
 				return payload;
 			});
 			return await Promise.race([apiPayload, initialPayload]);
@@ -341,7 +347,9 @@ export class XiaohongshuPageSource implements ContentSource {
 			const item = normalized.items.find((entry) => entry.id === getNoteId(raw));
 			const token = getNoteToken(raw);
 			if (item && token.token) {
-				this.noteTokens.set(item.id, { token: token.token, source: token.source });
+				// Keep the platform source with its token; reader contexts use internal names.
+				const source = token.source ?? (key.startsWith('search:') ? 'pc_search' : 'pc_feed');
+				this.noteTokens.set(item.id, { token: token.token, source });
 			}
 		}
 		stream.nextIndex += 1;
@@ -362,8 +370,9 @@ export class XiaohongshuPageSource implements ContentSource {
 		const url = new URL(`/explore/${encodeURIComponent(id)}`, SITE_ORIGIN);
 		const tokenInfo = this.noteTokens.get(id);
 		if (tokenInfo?.token) {
+			const source = tokenInfo.source ?? (context?.source === 'search' ? 'pc_search' : 'pc_feed');
 			url.searchParams.set('xsec_token', tokenInfo.token);
-			url.searchParams.set('xsec_source', tokenInfo.source ?? context?.source ?? 'pc_feed');
+			url.searchParams.set('xsec_source', source);
 		}
 		return url.toString();
 	}
