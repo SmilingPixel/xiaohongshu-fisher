@@ -97,7 +97,7 @@ export function getNoteId(value: unknown): string | undefined {
 }
 
 function getImages(card: RawRecord): MediaItem[] {
-	const images = firstArray(card, 'image_list', 'images') ?? [];
+	const images = firstArray(card, 'image_list', 'imageList', 'images') ?? [];
 	return images.flatMap((value) => {
 		const image = asRecord(value);
 		if (!image) {
@@ -130,7 +130,7 @@ function getAuthor(card: RawRecord): FeedItem['author'] {
 	if (!user) {
 		return undefined;
 	}
-	const name = firstString(user, 'nickname', 'name', 'nick_name');
+	const name = firstString(user, 'nickname', 'nickName', 'name', 'nick_name');
 	if (!name) {
 		return undefined;
 	}
