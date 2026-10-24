@@ -1,5 +1,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
+import { mock } from 'node:test';
+import { XiaohongshuPageSource } from '../sources/xiaohongshu-page-source';
 
 const commandIds = [
 	'xiaohongshu-fisher.refreshHomeFeed',
@@ -42,5 +44,32 @@ suite('Extension Test Suite', () => {
 				'xiaohongshuFisher.searchResults',
 			],
 		);
+	});
+
+	test('resolves host-only access parameters for browser commands without opening a browser', async () => {
+		await extension.activate();
+		const noteUrl = 'https://www.xiaohongshu.com/explore/fixture-note';
+		const resolvedUrl = `${noteUrl}?xsec_token=fixture-token&xsec_source=pc_feed`;
+		const resolver = mock.method(XiaohongshuPageSource.prototype, 'getNoteUrl', (id: string) => {
+			assert.strictEqual(id, 'fixture-note');
+			return resolvedUrl;
+		});
+		const opened: string[] = [];
+		const opener = mock.method(vscode.env, 'openExternal', async (uri: vscode.Uri) => {
+			opened.push(uri.toString(true));
+			return true;
+		});
+		try {
+			const command = 'xiaohongshu-fisher.openInBrowser';
+			await vscode.commands.executeCommand(command, { id: 'fixture-note', noteUrl });
+			await vscode.commands.executeCommand(command, noteUrl);
+			const suppliedUrl = `${noteUrl}?xsec_token=supplied-fixture&xsec_source=pc_search`;
+			await vscode.commands.executeCommand(command, suppliedUrl);
+			assert.deepStrictEqual(opened, [resolvedUrl, resolvedUrl, suppliedUrl]);
+			assert.strictEqual(resolver.mock.callCount(), 2);
+		} finally {
+			opener.mock.restore();
+			resolver.mock.restore();
+		}
 	});
 });

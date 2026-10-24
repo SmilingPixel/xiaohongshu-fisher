@@ -49,7 +49,8 @@ test('uses a restrictive CSP and per-document nonces without remote scripts', ()
 	const nonce = html.match(/script-src 'nonce-([^']+)'/)?.[1];
 	assert.ok(nonce);
 	assert.match(html, /default-src 'none'/);
-	assert.match(html, /img-src https:\/\/\*\.xhscdn\.com https:\/\/\*\.xiaohongshu\.com/);
+	assert.match(html, /img-src https:\/\/xhscdn\.com https:\/\/\*\.xhscdn\.com/);
+	assert.match(html, /https:\/\/xiaohongshu\.com https:\/\/\*\.xiaohongshu\.com/);
 	assert.ok(html.includes(`<script nonce="${nonce}">`));
 	assert.doesNotMatch(html, /<script[^>]+src=/);
 });
