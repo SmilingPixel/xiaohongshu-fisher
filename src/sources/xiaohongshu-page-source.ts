@@ -79,6 +79,10 @@ export class XiaohongshuPageSource implements ContentSource {
 		return 'unknown';
 	}
 
+	getNoteUrl(id: string): string {
+		return this.getDetailUrl(id);
+	}
+
 	async dispose(): Promise<void> {
 		await Promise.all([...this.streams.keys()].map((key) => this.closeStream(key)));
 		this.noteTokens.clear();

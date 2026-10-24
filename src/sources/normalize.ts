@@ -1,6 +1,7 @@
 // Platform field aliases stay here so views only need the normalized content models.
 import type { FeedItem, MediaItem, MediaType, NoteDetail, PageResult } from '../models/content';
 import { SourceError } from '../models/source-error';
+import { normalizeImageUrl } from '../models/image-url';
 
 type RawRecord = Record<string, unknown>;
 
@@ -64,16 +65,14 @@ function count(record: RawRecord, ...keys: string[]): number | undefined {
 	return undefined;
 }
 
-function safeHttpsUrl(value: unknown): string | undefined {
-	if (typeof value !== 'string') {
-		return undefined;
+function firstImageUrl(record: RawRecord, ...keys: string[]): string | undefined {
+	for (const key of keys) {
+		const url = normalizeImageUrl(record[key]);
+		if (url) {
+			return url;
+		}
 	}
-	try {
-		const url = new URL(value);
-		return url.protocol === 'https:' ? url.toString() : undefined;
-	} catch {
-		return undefined;
-	}
+	return undefined;
 }
 
 function getRawCard(value: unknown): RawRecord | undefined {
@@ -104,11 +103,16 @@ function getImages(card: RawRecord): MediaItem[] {
 			return [];
 		}
 		const infoList = firstArray(image, 'info_list', 'infoList') ?? [];
-		const info = asRecord(infoList[0]) ?? image;
-		const url = safeHttpsUrl(
-			firstString(info, 'url_default', 'urlDefault', 'url_pre', 'urlPre', 'url'),
-		);
-		return url ? [{ type: 'image' as const, url }] : [];
+		// A missing or unsupported candidate must not discard the whole image.
+		for (const candidate of [...infoList, image]) {
+			const info = asRecord(candidate);
+			const url =
+				info && firstImageUrl(info, 'url_default', 'urlDefault', 'url_pre', 'urlPre', 'url');
+			if (url) {
+				return [{ type: 'image' as const, url }];
+			}
+		}
+		return [];
 	});
 }
 
@@ -118,10 +122,9 @@ function getVideo(card: RawRecord): MediaItem | undefined {
 		return undefined;
 	}
 	const cover = firstRecord(video ?? card, 'cover', 'origin_cover', 'originCover');
-	const coverUrl = safeHttpsUrl(
-		firstString(cover ?? {}, 'url', 'url_default', 'urlDefault') ??
-			firstString(video ?? card, 'cover_url', 'coverUrl'),
-	);
+	const coverUrl =
+		firstImageUrl(cover ?? {}, 'url', 'url_default', 'urlDefault') ??
+		firstImageUrl(video ?? card, 'cover_url', 'coverUrl');
 	return { type: 'video', coverUrl };
 }
 
@@ -134,7 +137,7 @@ function getAuthor(card: RawRecord): FeedItem['author'] {
 	if (!name) {
 		return undefined;
 	}
-	const avatarUrl = safeHttpsUrl(firstString(user, 'avatar', 'avatar_url', 'avatarUrl'));
+	const avatarUrl = firstImageUrl(user, 'avatar', 'avatar_url', 'avatarUrl');
 	return {
 		id: firstString(user, 'user_id', 'userId', 'id'),
 		name,
@@ -194,11 +197,10 @@ export function normalizeFeedItem(value: unknown): FeedItem | undefined {
 		media.unshift(video);
 	}
 	const cover = firstRecord(card, 'cover', 'cover_image', 'coverImage');
-	const coverUrl = safeHttpsUrl(
-		firstString(cover ?? {}, 'url_default', 'urlDefault', 'url') ??
-			media.find((item) => item.type === 'image')?.url ??
-			video?.coverUrl,
-	);
+	const coverUrl =
+		firstImageUrl(cover ?? {}, 'url_default', 'urlDefault', 'url') ??
+		media.find((item) => item.type === 'image')?.url ??
+		video?.coverUrl;
 	const time = count(card, 'time', 'publish_time', 'publishTime');
 	const publishedAt =
 		time === undefined
