@@ -4,23 +4,6 @@ import { SourceError } from '../models/source-error';
 import type { ContentApplicationService } from '../application/content-service';
 import { escapeHtml, isReaderMessage, renderNoteDetail, renderReaderHtml } from './reader-security';
 
-function trustedNoteUrl(value: string): vscode.Uri | undefined {
-	try {
-		const url = new URL(value);
-		if (
-			url.protocol !== 'https:' ||
-			url.username ||
-			url.password ||
-			!(url.hostname === 'xiaohongshu.com' || url.hostname.endsWith('.xiaohongshu.com'))
-		) {
-			return undefined;
-		}
-		return vscode.Uri.parse(url.toString());
-	} catch {
-		return undefined;
-	}
-}
-
 /** Reuses one reader panel and ignores detail responses superseded by later selections. */
 export class NoteReader implements vscode.Disposable {
 	private panel?: vscode.WebviewPanel;
@@ -78,10 +61,8 @@ export class NoteReader implements vscode.Disposable {
 			await this.loadDetail(this.item);
 			return;
 		}
-		const uri = trustedNoteUrl(this.item.noteUrl);
-		if (uri) {
-			await vscode.env.openExternal(uri);
-		}
+		// Resolve access parameters in the host command, never in WebView HTML or messages.
+		await vscode.commands.executeCommand('xiaohongshu-fisher.openInBrowser', this.item);
 	}
 
 	private async loadDetail(item: FeedItem): Promise<void> {
