@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { normalizeImageUrl } from '../../models/image-url';
+import { renderNoteDetail } from '../../webview/reader-security';
 import {
 	getNoteToken,
 	normalizeFeedItem,
@@ -23,9 +25,9 @@ const pageFixture = {
 					user: {
 						user_id: 'fixture-user',
 						nickname: '样例作者',
-						avatar: 'https://example.test/avatar.jpg',
+						avatar: 'https://sns-img.xhscdn.com/avatar.jpg',
 					},
-					image_list: [{ info_list: [{ url_default: 'https://example.test/cover.jpg' }] }],
+					image_list: [{ info_list: [{ url_default: 'https://sns-img.xhscdn.com/cover.jpg' }] }],
 					interact_info: { liked_count: '1,234', comment_count: '18', collected_count: '56' },
 					publish_time: 1_750_000_000_000,
 				},
@@ -46,9 +48,9 @@ test('normalizes supported feed fields and omits platform token from view models
 		author: {
 			id: 'fixture-user',
 			name: '样例作者',
-			avatarUrl: 'https://example.test/avatar.jpg',
+			avatarUrl: 'https://sns-img.xhscdn.com/avatar.jpg',
 		},
-		coverUrl: 'https://example.test/cover.jpg',
+		coverUrl: 'https://sns-img.xhscdn.com/cover.jpg',
 		mediaType: 'image',
 		noteUrl: 'https://www.xiaohongshu.com/explore/fixture-note-01',
 		publishedAt: new Date(1_750_000_000_000).toISOString(),
@@ -61,7 +63,7 @@ test('normalizes supported feed fields and omits platform token from view models
 	});
 });
 
-test('supports camel-case note detail payloads and safely ignores non-HTTPS media', () => {
+test('supports camel-case note detail payloads and ignores untrusted media', () => {
 	const detail = normalizeNoteDetail({
 		data: {
 			items: [
@@ -85,6 +87,44 @@ test('supports camel-case note detail payloads and safely ignores non-HTTPS medi
 	assert.deepStrictEqual(detail.media, [{ type: 'video', coverUrl: undefined }]);
 });
 
+test('renders CDN images from HTTP addresses and usable fallback candidates', () => {
+	const detail = normalizeNoteDetail({
+		noteId: 'image-fixture',
+		imageList: [
+			{ urlDefault: 'http://sns-webpic-qc.xhscdn.com/fixture.jpg?format=webp' },
+			{ infoList: [{ url: '' }, { url: 'https://sns-img.xhscdn.com/second.jpg' }] },
+			{
+				infoList: [{ url: 'https://untrusted.example/image.jpg' }],
+				urlDefault: 'javascript:alert(1)',
+				urlPre: '//sns-img.xhscdn.com/fallback.jpg',
+			},
+		],
+	});
+	assert.deepEqual(
+		detail.media.map((image) => image.url),
+		[
+			'https://sns-webpic-qc.xhscdn.com/fixture.jpg?format=webp',
+			'https://sns-img.xhscdn.com/second.jpg',
+			'https://sns-img.xhscdn.com/fallback.jpg',
+		],
+	);
+	const html = renderNoteDetail(detail);
+	assert.equal(html.match(/<img /g)?.length, 3);
+	assert.doesNotMatch(html, /http:|untrusted\.example|javascript:/);
+});
+
+test('rejects unsafe image URLs instead of upgrading arbitrary hosts', () => {
+	for (const url of [
+		'http://xhscdn.com.attacker.example/image.jpg',
+		'https://user:password@sns-img.xhscdn.com/image.jpg',
+		'https://sns-img.xhscdn.com:8443/image.jpg',
+		'javascript:alert(1)',
+		'data:image/png;base64,fixture',
+	]) {
+		assert.equal(normalizeImageUrl(url), undefined);
+	}
+});
+
 test('drops malformed records and rejects unexpected page shapes', () => {
 	assert.equal(normalizeFeedItem(null), undefined);
 	assert.equal(normalizeFeedItem({ note_card: { display_title: 'no id' } }), undefined);
@@ -99,7 +139,7 @@ test('preserves array alias precedence, including an explicitly empty primary fi
 	const detail = normalizeNoteDetail({
 		...note,
 		image_list: [],
-		images: [{ url: 'https://example.test/fallback.jpg' }],
+		images: [{ url: 'https://sns-img.xhscdn.com/fallback.jpg' }],
 		tag_list: [],
 		tagList: [{ name: 'Fallback topic' }],
 	});
@@ -111,11 +151,15 @@ test('falls back to alternate media fields when primary fields are malformed', (
 	const detail = normalizeNoteDetail({
 		noteId: 'media-alias-note',
 		image_list: null,
-		images: [{ info_list: null, infoList: [{ urlDefault: 'https://example.test/image.jpg' }] }],
+		images: [
+			{ info_list: null, infoList: [{ urlDefault: 'https://sns-img.xhscdn.com/image.jpg' }] },
+		],
 		tag_list: null,
 		tagList: [{ tagName: 'Sample topic' }],
 	});
-	assert.deepStrictEqual(detail.media, [{ type: 'image', url: 'https://example.test/image.jpg' }]);
+	assert.deepStrictEqual(detail.media, [
+		{ type: 'image', url: 'https://sns-img.xhscdn.com/image.jpg' },
+	]);
 	assert.deepStrictEqual(detail.topics, ['Sample topic']);
 });
 

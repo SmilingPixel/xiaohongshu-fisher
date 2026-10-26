@@ -128,7 +128,10 @@ function registerCommand(
 	);
 }
 
-function getTrustedNoteUrl(value: unknown): vscode.Uri | undefined {
+function getTrustedNoteUrl(
+	value: unknown,
+	resolveNoteUrl: (id: string) => string,
+): vscode.Uri | undefined {
 	let candidate: unknown = value;
 	if (typeof value === 'object' && value !== null && 'noteUrl' in value) {
 		candidate = value.noteUrl;
@@ -143,9 +146,14 @@ function getTrustedNoteUrl(value: unknown): vscode.Uri | undefined {
 			url.protocol !== 'https:' ||
 			url.username ||
 			url.password ||
+			url.port ||
 			!(url.hostname === 'xiaohongshu.com' || url.hostname.endsWith('.xiaohongshu.com'))
 		) {
 			return undefined;
+		}
+		const noteId = /^\/explore\/([a-zA-Z0-9_-]+)\/?$/.exec(url.pathname)?.[1];
+		if (noteId && !url.searchParams.get('xsec_token')) {
+			return vscode.Uri.parse(resolveNoteUrl(noteId));
 		}
 		return vscode.Uri.parse(url.toString());
 	} catch {
@@ -267,7 +275,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		void vscode.window.showWarningMessage('没有可读取的小红书笔记。');
 	});
 	registerCommand(context, 'openInBrowser', async (value: unknown) => {
-		const uri = getTrustedNoteUrl(value);
+		const uri = getTrustedNoteUrl(value, (id) => application.getNoteUrl(id));
 		if (uri) {
 			await vscode.env.openExternal(uri);
 			return;

@@ -50,6 +50,10 @@ flowchart TB
 
 `src/sources/normalize.ts` 将网页响应转换为内部模型，过滤缺少实体 ID 或结构不匹配的条目，并校验媒体链接为 HTTPS。平台字段名不应泄漏到 TreeView 或 WebView。
 
+`src/models/image-url.ts` 统一图片规范化和渲染所使用的主机策略。使用 HTTP 或协议相对形式的官方 CDN 地址会升级为 HTTPS。解析器会依次检查每个图片候选值及其外层图片字段，直到找到可用地址；不受支持的候选值不会遮蔽其他有效候选值。WebView 的 CSP 使用相同的允许主机列表。
+
+`ContentSource.getNoteUrl` 使用与详情导航相同的内存访问参数解析浏览器链接。阅读器按钮和已注册的浏览器命令都通过这条仅限主机的路径获取链接。规范化模型和 WebView 消息中不包含笔记访问令牌；完整 URL 仅在用户操作后传递给 `vscode.env.openExternal`。这不会将扩展的登录 Cookie 转移到系统浏览器。
+
 ### 浏览器会话
 
 `src/session/browser-session.ts` 管理持久化的无头 Chromium 上下文，profile 存放在 `globalStorageUri/browser-profile`，已有会话继续尝试复用。用户通过 VS Code 登录辅助页查看官方二维码并用手机扫码；“清除会话”会关闭上下文并删除 profile。

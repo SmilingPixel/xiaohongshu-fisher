@@ -70,6 +70,10 @@ export class FakeContentSource implements ContentSource {
 		return 'logged-out';
 	}
 
+	getNoteUrl(id: string): string {
+		return `https://www.xiaohongshu.com/explore/${encodeURIComponent(id)}`;
+	}
+
 	async dispose(): Promise<void> {}
 
 	private page(cursor?: string, items = fixtures): PageResult<FeedItem> {

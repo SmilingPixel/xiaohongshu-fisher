@@ -200,6 +200,7 @@ test('preserves platform token sources and infers missing sources from their fee
 		const detail = await source.getNoteDetail('detail-fixture', { source: 'external' }, signal);
 		assert.equal(detailUrl?.searchParams.get('xsec_token'), 'fixture-token-only');
 		assert.equal(detailUrl?.searchParams.get('xsec_source'), expectedSource);
+		assert.equal(source.getNoteUrl('detail-fixture'), detailUrl?.toString());
 		assert.doesNotMatch(JSON.stringify(detail), /fixture-token-only|xsec_/);
 	}
 });

@@ -11,6 +11,8 @@ export interface ContentSource {
 	getExploreFeed(cursor?: string, signal?: AbortSignal): Promise<PageResult<FeedItem>>;
 	searchNotes(query: string, cursor?: string, signal?: AbortSignal): Promise<PageResult<FeedItem>>;
 	getNoteDetail(id: string, context?: NoteSourceContext, signal?: AbortSignal): Promise<NoteDetail>;
+	/** Host-only URL for an explicit browser action; may contain platform access parameters. */
+	getNoteUrl(id: string): string;
 	getSessionStatus(): Promise<SessionStatus>;
 	dispose(): Promise<void>;
 }

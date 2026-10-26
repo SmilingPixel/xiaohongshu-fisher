@@ -131,6 +131,10 @@ export class ContentApplicationService {
 		this.requests.get(key)?.abort();
 	}
 
+	getNoteUrl(id: string): string {
+		return this.source.getNoteUrl(id);
+	}
+
 	dispose(): void {
 		for (const controller of this.requests.values()) {
 			controller.abort();

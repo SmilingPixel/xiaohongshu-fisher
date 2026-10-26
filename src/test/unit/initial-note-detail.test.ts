@@ -11,7 +11,7 @@ const note = {
 	noteId,
 	title: 'Initial note fixture',
 	desc: 'Fixture body',
-	imageList: [{ urlDefault: 'https://example.test/image.jpg' }],
+	imageList: [{ urlDefault: 'https://sns-img.xhscdn.com/image.jpg' }],
 	user: { userId: 'fixture-author', nickName: 'Fixture author' },
 };
 
@@ -43,7 +43,9 @@ test('extracts only the requested note before and after hydration', async () => 
 		assert.equal(detail.id, noteId);
 		assert.equal(detail.body, desc);
 		assert.equal(detail.author?.name, 'Fixture author');
-		assert.deepEqual(detail.media, [{ type: 'image', url: 'https://example.test/image.jpg' }]);
+		assert.deepEqual(detail.media, [
+			{ type: 'image', url: 'https://sns-img.xhscdn.com/image.jpg' },
+		]);
 		assert.doesNotMatch(JSON.stringify(payload), /unrelated-note|unrelated-account-state/);
 	}
 });

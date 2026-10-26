@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import type { NoteDetail } from '../models/content';
+import { IMAGE_HOSTS, trustedImageUrl } from '../models/image-url';
 
-const IMAGE_HOSTS = ['xhscdn.com', 'xiaohongshu.com'];
+export { trustedImageUrl } from '../models/image-url';
 
 export type ReaderMessage = { command: 'retry' } | { command: 'open-in-browser' };
 
@@ -30,24 +31,6 @@ export function escapeHtml(value: string): string {
 				"'": '&#39;',
 			})[character] ?? character,
 	);
-}
-
-export function trustedImageUrl(value: string | undefined): string | undefined {
-	if (!value) {
-		return undefined;
-	}
-	try {
-		const url = new URL(value);
-		if (url.protocol !== 'https:' || url.username || url.password) {
-			return undefined;
-		}
-		const allowed = IMAGE_HOSTS.some(
-			(host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
-		);
-		return allowed ? url.toString() : undefined;
-	} catch {
-		return undefined;
-	}
 }
 
 function formatStats(detail: NoteDetail): string {
@@ -98,7 +81,7 @@ export function renderReaderHtml(title: string, content: string): string {
 	const styleNonce = randomBytes(18).toString('base64');
 	const csp = [
 		"default-src 'none'",
-		'img-src https://*.xhscdn.com https://*.xiaohongshu.com',
+		`img-src ${IMAGE_HOSTS.flatMap((host) => [`https://${host}`, `https://*.${host}`]).join(' ')}`,
 		`style-src 'nonce-${styleNonce}'`,
 		`script-src 'nonce-${scriptNonce}'`,
 	].join('; ');
