@@ -3,7 +3,7 @@ import { validateQrPng } from './login-qr-image';
 
 const QR_IMAGE_PATH = '/login-qr.png';
 
-/** Exposes a copied, in-memory QR image to VS Code's image editor and erases it on cleanup. */
+/** Serves only the current, copied QR image as a versioned in-memory WebView resource. */
 export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.Disposable {
 	private readonly changeEmitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
 	readonly onDidChangeFile = this.changeEmitter.event;
@@ -26,7 +26,7 @@ export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.D
 	}
 
 	getUri(): vscode.Uri {
-		return this.uri;
+		return this.uri.with({ query: `v=${this.modifiedAt}` });
 	}
 
 	setImage(value: Uint8Array | undefined): void {
@@ -35,21 +35,25 @@ export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.D
 			this.clear();
 			return;
 		}
+		if (this.image?.length === image.length && this.image.every((byte, i) => byte === image[i])) {
+			image.fill(0);
+			return;
+		}
 		this.image?.fill(0);
 		this.image = image;
 		this.modifiedAt = Math.max(Date.now(), this.modifiedAt + 1);
-		this.changeEmitter.fire([{ type: vscode.FileChangeType.Changed, uri: this.uri }]);
+		this.changeEmitter.fire([{ type: vscode.FileChangeType.Changed, uri: this.getUri() }]);
 	}
 
 	clear(): void {
 		if (!this.image) {
 			return;
 		}
+		const uri = this.getUri();
 		this.image.fill(0);
 		this.image = undefined;
 		this.modifiedAt = Math.max(Date.now(), this.modifiedAt + 1);
-		this.changeEmitter.fire([{ type: vscode.FileChangeType.Deleted, uri: this.uri }]);
-		this.closeQrEditorTabs();
+		this.changeEmitter.fire([{ type: vscode.FileChangeType.Deleted, uri }]);
 	}
 
 	watch(_uri: vscode.Uri): vscode.Disposable {
@@ -105,20 +109,13 @@ export class LoginQrImageProvider implements vscode.FileSystemProvider, vscode.D
 	}
 
 	private assertUri(uri: vscode.Uri): void {
-		if (uri.scheme !== this.uri.scheme || uri.path !== QR_IMAGE_PATH) {
+		if (
+			uri.scheme !== this.uri.scheme ||
+			uri.authority !== this.uri.authority ||
+			uri.path !== QR_IMAGE_PATH ||
+			uri.query !== this.getUri().query
+		) {
 			throw vscode.FileSystemError.FileNotFound(uri);
-		}
-	}
-
-	private closeQrEditorTabs(): void {
-		const tabs = vscode.window.tabGroups.all.flatMap((group) =>
-			group.tabs.filter((tab) => {
-				const input = tab.input as { uri?: vscode.Uri };
-				return input.uri?.toString() === this.uri.toString();
-			}),
-		);
-		if (tabs.length > 0) {
-			void vscode.window.tabGroups.close(tabs);
 		}
 	}
 }

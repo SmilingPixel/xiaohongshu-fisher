@@ -131,9 +131,38 @@
 					"command": "xiaohongshu-fisher.searchNotes",
 					"when": "view == xiaohongshuFisher.searchResults",
 					"group": "navigation"
+				},
+				{
+					"command": "xiaohongshu-fisher.openLogin",
+					"when": "view == xiaohongshuFisher.homeFeed",
+					"group": "navigation@1"
+				},
+				{
+					"command": "xiaohongshu-fisher.openLogin",
+					"when": "view == xiaohongshuFisher.exploreFeed",
+					"group": "navigation@1"
+				},
+				{
+					"command": "xiaohongshu-fisher.openLogin",
+					"when": "view == xiaohongshuFisher.searchResults",
+					"group": "navigation@1"
 				}
 			]
-		}
+		},
+		"viewsWelcome": [
+			{
+				"view": "xiaohongshuFisher.homeFeed",
+				"contents": "首次使用？先用小红书 App 扫码登录。\n[扫码登录](command:xiaohongshu-fisher.openLogin)\n已有会话？[直接刷新推荐](command:xiaohongshu-fisher.refreshHomeFeed)。"
+			},
+			{
+				"view": "xiaohongshuFisher.exploreFeed",
+				"contents": "首次使用？先用小红书 App 扫码登录。\n[扫码登录](command:xiaohongshu-fisher.openLogin)\n已有会话？[直接刷新发现](command:xiaohongshu-fisher.refreshExploreFeed)。"
+			},
+			{
+				"view": "xiaohongshuFisher.searchResults",
+				"contents": "首次使用？先用小红书 App 扫码登录。\n[扫码登录](command:xiaohongshu-fisher.openLogin)\n已有会话？[直接搜索笔记](command:xiaohongshu-fisher.searchNotes)。"
+			}
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "pnpm run compile && pnpm run test:package",
