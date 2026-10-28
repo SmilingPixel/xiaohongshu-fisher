@@ -7,6 +7,8 @@ import {
 	toLoginAssistantViewState,
 } from '../../webview/login-assistant-security';
 
+const cspSource = 'https://fixture.vscode-resource.vscode-cdn.net';
+
 const snapshot: LoginSnapshot = {
 	status: 'waiting-scan',
 	message: '<img src=x onerror=alert(1)>',
@@ -17,7 +19,7 @@ const snapshot: LoginSnapshot = {
 
 test('accepts only fixed login assistant message commands', () => {
 	assert.equal(isLoginAssistantMessage({ command: 'ready' }), true);
-	assert.equal(isLoginAssistantMessage({ command: 'show-qr' }), true);
+	assert.equal(isLoginAssistantMessage({ command: 'show-qr' }), false);
 	assert.equal(isLoginAssistantMessage({ command: 'refresh-qr' }), true);
 	assert.equal(isLoginAssistantMessage({ command: 'open-official-page' }), true);
 	assert.equal(
@@ -27,7 +29,7 @@ test('accepts only fixed login assistant message commands', () => {
 });
 
 test('escapes status text and never sends QR image data to the WebView', () => {
-	const html = renderLoginAssistantHtml(snapshot);
+	const html = renderLoginAssistantHtml(snapshot, cspSource);
 	const state = toLoginAssistantViewState(snapshot);
 	assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
 	assert.match(html, /default-src 'none'/);
@@ -46,7 +48,7 @@ test('hides QR and countdown for terminal states', () => {
 		pageUrl: 'https://www.xiaohongshu.com/website-login/error',
 	};
 	const state = toLoginAssistantViewState(terminal);
-	const html = renderLoginAssistantHtml(terminal);
+	const html = renderLoginAssistantHtml(terminal, cspSource);
 	assert.equal(state.qrAvailable, false);
 	assert.equal(state.expiresAt, 0);
 	assert.match(html, /重新尝试登录/);

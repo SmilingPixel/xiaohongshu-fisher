@@ -36,7 +36,7 @@ flowchart TB
 
 `src/extension.ts` 创建浏览器会话、网页 source、应用服务、阅读器和三个 TreeView provider，并注册命令。视图只展示应用服务提供的状态和条目；命令层负责 VS Code 输入框、Quick Pick、提示消息和系统浏览器跳转。
 
-三个列表分别维护状态。条目包含标题、可选作者和媒体类型；有下一页游标时显示“加载更多”。
+`src/views/status-tree-provider.ts` 渲染三个独立列表。尚未加载的列表返回空树，由 VS Code 显示 `package.json` 中通过 `viewsWelcome` 声明的登录按钮，以及供已有会话使用的刷新或搜索链接。各视图标题栏也提供登录入口。登录失效时，列表显示登录操作，并保留已加载的笔记和分页状态。Provider 不发起登录或网络请求。
 
 ### 应用服务
 
@@ -62,7 +62,7 @@ flowchart TB
 
 `src/session/browser-startup.ts` 将启动失败分类为缺少运行时、缺少系统依赖、沙箱、会话占用、权限或未知错误。Playwright 在启动时校验所需的 headless shell 运行时。日志仅包含平台、错误类别和缺少的动态库名称，不暴露原始启动参数或 profile 路径。Linux 下，用户主动运行的安装命令包含 `--with-deps`，在扩展宿主终端中执行，系统包管理器可能要求 sudo 权限。
 
-官方登录页在 Playwright 中运行，不嵌入 WebView，也不把 Cookie 发送给前端。会话监听页面创建二维码的官方响应，校验挑战 URL 后在宿主中生成 PNG，通过临时 VS Code 图像文档显示。二维码过期或需要额外验证时停止轮询，等待用户主动重试。官方页面外链仅供查看，系统浏览器不共享扩展会话。
+官方登录页在 Playwright 中运行，不嵌入 WebView。会话校验官方二维码响应后，在宿主中生成 PNG。`LoginQrImageProvider` 通过带版本号的只读内存 URI 提供当前图片；`LoginAssistant` 使用 `asWebviewUri` 转换地址，在 WebView 就绪后直接显示二维码。图片访问受 `localResourceRoots` 和 CSP 限制，Cookie 和原始登录参数不会传入 WebView。二维码过期或需要额外验证时停止轮询，等待用户主动重试；外部官方页面不共享扩展会话。
 
 ### 阅读 WebView
 
@@ -95,13 +95,14 @@ sequenceDiagram
     participant Login as 登录辅助 WebView
     participant Site as 小红书
 
-    User->>Command: 运行扫码登录命令
+    User->>Command: 点击侧栏登录入口
     Command->>Session: 创建无头持久化上下文
     Session->>Page: 导航官方登录页
     loop 直到扫码成功、过期或验证失败
         Page-->>Session: 页面状态与二维码创建响应
-        Session->>Login: 发送二维码可用状态、过期时间和登录状态
-        User->>Login: 在编辑器中打开二维码并用手机扫码
+        Session->>Login: 发送显示状态和带版本号的图片 URI
+        Login-->>User: 在当前页面自动显示二维码
+        User->>Login: 使用手机客户端扫码
         Page->>Site: 官方登录流程
         Session->>Page: 低频检查登录状态
     end
@@ -110,7 +111,9 @@ sequenceDiagram
     Session->>Command: 允许用户刷新推荐/搜索
 ```
 
-登录 WebView 仅接收状态、二维码可用状态、过期时间，以及固定安全链接，并只发送固定命令。错误码 300012 归类为 IP 风险，其他官方错误重定向归类为页面错误。流程结束时停止轮询、关闭登录页并清理二维码字节。PNG 仅在内存中短暂保存，供临时 VS Code 图像查看器显示；登录完成、过期、错误或关闭辅助页后立即清理，不写入日志、工作区或持久缓存。登录成功后的内容读取继续使用同一个浏览器上下文。
+登录 WebView 仅接收显示状态、可选的宿主生成图片 URI、过期时间和固定官方链接，并只发送白名单内的命令。重复打开登录辅助页会显示已有面板，不重新发起登录。刷新时在原位置替换图片，并通过登录尝试的代次检查，防止已关闭流程的异步结果覆盖重新打开的面板。
+
+登录完成、过期或出错时，清除内存图片并移除 DOM 中的图片地址；关闭辅助页时停止登录流程，同时清理状态快照和图片。二维码字节不嵌入 HTML 或消息，也不写入工作区或日志；页面倒计时结束时也会隐藏二维码。错误码 300012 仍归类为 IP 风险，其他官方错误重定向归类为页面错误。登录成功后的内容读取继续使用同一个浏览器上下文。
 
 ### 刷新列表与翻页
 

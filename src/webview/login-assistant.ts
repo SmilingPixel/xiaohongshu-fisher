@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { BrowserSession } from '../session/browser-session';
-import { LOGIN_TERMINAL_STATES, type LoginSnapshot } from '../session/login-model';
+import type { LoginSnapshot } from '../session/login-model';
 import type { LoginQrImageProvider } from '../session/login-qr-image-provider';
 import {
 	isLoginAssistantMessage,
@@ -19,11 +19,12 @@ const INITIAL_SNAPSHOT: LoginSnapshot = {
 /** Coordinates login commands and publishes sanitized state after the WebView's ready handshake. */
 export class LoginAssistant implements vscode.Disposable {
 	private panel?: vscode.WebviewPanel;
-	private readonly disposables: vscode.Disposable[] = [];
+	private readonly panelDisposables: vscode.Disposable[] = [];
 	private readonly snapshotSubscription: vscode.Disposable;
 	private snapshot: LoginSnapshot = INITIAL_SNAPSHOT;
 	private webviewReady = false;
 	private attemptInFlight = false;
+	private attemptGeneration = 0;
 
 	constructor(
 		private readonly session: BrowserSession,
@@ -34,18 +35,49 @@ export class LoginAssistant implements vscode.Disposable {
 	}
 
 	async open(): Promise<void> {
+		if (this.panel) {
+			this.panel.reveal(vscode.ViewColumn.Active);
+			return;
+		}
+		this.getPanel();
+		await this.runAttempt(false);
+	}
+
+	async refreshQr(): Promise<void> {
+		if (!this.panel) {
+			await this.open();
+			return;
+		}
+		await this.runAttempt(true);
+	}
+
+	dispose(): void {
+		this.snapshotSubscription.dispose();
+		this.panel?.dispose();
+		this.session.stopLogin();
+		this.qrImageProvider.clear();
+	}
+
+	private async runAttempt(refresh: boolean): Promise<void> {
 		if (this.attemptInFlight) {
 			return;
 		}
+		const generation = ++this.attemptGeneration;
 		this.attemptInFlight = true;
-		this.logger?.info('Opening QR login assistant.');
-		const panel = this.getPanel();
-		this.snapshot = INITIAL_SNAPSHOT;
-		this.webviewReady = false;
-		panel.webview.html = renderLoginAssistantHtml(this.snapshot);
+		this.logger?.info(refresh ? 'Refreshing login QR.' : 'Opening QR login assistant.');
+		this.update({
+			...INITIAL_SNAPSHOT,
+			message: refresh ? '正在请求新的登录二维码…' : INITIAL_SNAPSHOT.message,
+		});
 		try {
-			this.update(await this.session.startLogin());
+			const snapshot = await (refresh ? this.session.refreshLoginQr() : this.session.startLogin());
+			if (generation === this.attemptGeneration) {
+				this.update(snapshot);
+			}
 		} catch (error) {
+			if (generation !== this.attemptGeneration) {
+				return;
+			}
 			this.logger?.warn(
 				'QR login assistant failed to start: %s.',
 				error instanceof Error ? error.name : 'unknown error',
@@ -56,79 +88,45 @@ export class LoginAssistant implements vscode.Disposable {
 				qrRevision: 0,
 				expiresAt: 0,
 			});
-			throw error;
+			if (!refresh) {
+				throw error;
+			}
 		} finally {
-			this.attemptInFlight = false;
-			void this.postSnapshot();
+			// Closing and reopening must not let an old attempt replace the new panel's state.
+			if (generation === this.attemptGeneration) {
+				this.attemptInFlight = false;
+				void this.postSnapshot();
+			}
 		}
-	}
-
-	async refreshQr(): Promise<void> {
-		if (this.attemptInFlight) {
-			return;
-		}
-		this.attemptInFlight = true;
-		this.logger?.info('Refreshing login QR.');
-		if (!this.panel) {
-			this.attemptInFlight = false;
-			await this.open();
-			return;
-		}
-		this.update({
-			status: 'loading',
-			message: '正在请求新的登录二维码…',
-			qrRevision: 0,
-			expiresAt: 0,
-		});
-		try {
-			this.update(await this.session.refreshLoginQr());
-		} catch (error) {
-			this.update({
-				status: 'page-error',
-				message: error instanceof Error ? error.message : '无法刷新二维码。',
-				qrRevision: 0,
-				expiresAt: 0,
-			});
-		} finally {
-			this.attemptInFlight = false;
-			void this.postSnapshot();
-		}
-	}
-
-	dispose(): void {
-		this.snapshotSubscription.dispose();
-		this.disposables.forEach((disposable) => disposable.dispose());
-		this.panel?.dispose();
-		this.panel = undefined;
-		this.session.stopLogin();
-		this.qrImageProvider.clear();
 	}
 
 	private getPanel(): vscode.WebviewPanel {
-		if (this.panel) {
-			this.panel.reveal(vscode.ViewColumn.Active);
-			return this.panel;
-		}
 		const panel = vscode.window.createWebviewPanel(
 			'xiaohongshuFisher.loginAssistant',
 			'小红书扫码登录',
 			vscode.ViewColumn.Active,
 			{
 				enableScripts: true,
-				localResourceRoots: [],
+				localResourceRoots: [this.qrImageProvider.getUri().with({ path: '/', query: '' })],
 			},
 		);
 		this.panel = panel;
-		this.disposables.push(
+		this.snapshot = INITIAL_SNAPSHOT;
+		this.webviewReady = false;
+		this.panelDisposables.push(
 			panel.webview.onDidReceiveMessage((value: unknown) => this.onMessage(value)),
-		);
-		this.disposables.push(
 			panel.onDidDispose(() => {
 				this.panel = undefined;
+				this.webviewReady = false;
+				this.attemptGeneration++;
+				this.attemptInFlight = false;
+				this.snapshot = INITIAL_SNAPSHOT;
 				this.session.stopLogin();
 				this.qrImageProvider.clear();
+				this.panelDisposables.splice(0).forEach((disposable) => disposable.dispose());
 			}),
 		);
+		panel.webview.html = renderLoginAssistantHtml(this.snapshot, panel.webview.cspSource);
 		return panel;
 	}
 
@@ -141,21 +139,13 @@ export class LoginAssistant implements vscode.Disposable {
 			await this.postSnapshot();
 			return;
 		}
-		if (value.command === 'show-qr') {
-			if (!LOGIN_TERMINAL_STATES.has(this.snapshot.status) && this.snapshot.qrPng) {
-				await vscode.commands.executeCommand('vscode.open', this.qrImageProvider.getUri(), {
-					preview: false,
-				});
-			}
-			return;
-		}
 		if (value.command === 'refresh-qr') {
 			await this.refreshQr();
 			return;
 		}
 		if (value.command === 'open-official-page') {
-			const pageUrl = this.snapshot.pageUrl;
-			if (LOGIN_TERMINAL_STATES.has(this.snapshot.status) && pageUrl?.startsWith('https://')) {
+			const pageUrl = toLoginAssistantViewState(this.snapshot).pageUrl;
+			if (pageUrl) {
 				await vscode.env.openExternal(vscode.Uri.parse(pageUrl));
 			}
 			return;
@@ -168,9 +158,7 @@ export class LoginAssistant implements vscode.Disposable {
 			return;
 		}
 		this.snapshot = snapshot;
-		this.qrImageProvider.setImage(
-			LOGIN_TERMINAL_STATES.has(snapshot.status) ? undefined : snapshot.qrPng,
-		);
+		this.qrImageProvider.setImage(snapshot.status === 'waiting-scan' ? snapshot.qrPng : undefined);
 		void this.postSnapshot();
 	}
 
@@ -178,7 +166,8 @@ export class LoginAssistant implements vscode.Disposable {
 		if (!this.panel || !this.webviewReady) {
 			return;
 		}
-		const state = toLoginAssistantViewState(this.snapshot);
+		const qrImageUri = this.panel.webview.asWebviewUri(this.qrImageProvider.getUri()).toString();
+		const state = toLoginAssistantViewState(this.snapshot, qrImageUri);
 		await this.panel.webview.postMessage({ ...state, attemptInFlight: this.attemptInFlight });
 	}
 }
