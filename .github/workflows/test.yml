@@ -1,0 +1,56 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.3.4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # VS Code's Electron test host requires a display on headless Linux runners.
+      # See official documentation: https://code.visualstudio.com/api/working-with-extensions/continuous-integration#github-actions
+      - name: Run tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm test
+
+      - name: Run tests (macOS and Windows)
+        if: runner.os != 'Linux'
+        run: pnpm test
+
+      - name: Test packaged dependencies
+        run: pnpm run test:package
