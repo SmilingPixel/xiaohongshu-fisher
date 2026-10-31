@@ -1,6 +1,13 @@
-out
+.DS_Store
+npm-debug.log
+Thumbs.db
+out/
 dist
-node_modules
+**/node_modules/
 .vscode-test/
 *.vsix
+*/.vs/
+*.lsif
+*.db
+*.tsbuildinfo
 tmp/
