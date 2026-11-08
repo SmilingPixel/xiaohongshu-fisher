@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 import { SourceError } from '../models/source-error';
 
 export type BrowserMode = 'window' | 'headless';
@@ -26,22 +27,30 @@ export function diagnoseBrowserStartup(
 	// eslint-disable-next-line no-control-regex -- Strip actual ANSI escape sequences from Chromium stderr.
 	const reason = error instanceof Error ? error.message.replace(/\x1b\[[0-9;]*m/g, '') : '';
 	let category: BrowserStartupCategory = 'unknown';
-	let detail =
-		'请查看“输出”中的 Xiaohongshu Fisher 启动诊断，并参考 README 中的浏览器故障排查说明。';
+	let detail = l10n.t(
+		'Check the Xiaohongshu Fisher startup diagnostics in Output and the browser troubleshooting instructions in the README.',
+	);
 	const missingLibraries = new Set<string>();
-	const browserName = mode === 'headless' ? '无头 Chromium' : 'Chromium';
+	const browserName = mode === 'headless' ? l10n.t('headless Chromium') : 'Chromium';
 
 	if (/Executable doesn't exist/i.test(reason)) {
 		category = 'runtime-missing';
-		detail = `缺少${mode === 'headless' ? '无头 ' : ''}Playwright Chromium 运行时，请运行“安装 Playwright Chromium”后重试。若已经安装，请尝试重新加载 VS Code 窗口。`;
+		detail = l10n.t(
+			'The {browser} runtime is missing. Run “Install Playwright Chromium” and retry. If already installed, reload the VS Code window.',
+			{
+				browser:
+					mode === 'headless' ? l10n.t('headless Playwright Chromium') : 'Playwright Chromium',
+			},
+		);
 	} else if (
 		/Missing X server|\$DISPLAY|cannot open display|Failed to connect to Wayland display|Failed to initialize Wayland/i.test(
 			reason,
 		)
 	) {
 		category = 'display-unavailable';
-		detail =
-			'普通浏览器模式需要图形桌面。请在有图形桌面的主机上运行扩展；也可在扩展设置中选择无头模式，但官方可能拒绝无头会话。';
+		detail = l10n.t(
+			'Window mode requires a graphical desktop. Run the extension on a host with a graphical desktop, or select headless mode in the extension settings. The platform may reject headless sessions.',
+		);
 	} else if (
 		/Host system is missing dependencies|Missing libraries:|error while loading shared libraries:/i.test(
 			reason,
@@ -64,14 +73,19 @@ export function diagnoseBrowserStartup(
 			}
 		}
 		const libraries = [...missingLibraries].slice(0, 20);
-		detail = `缺少 Chromium 系统依赖${libraries.length ? `（${libraries.join('、')}）` : ''}。请在运行扩展的主机上运行“安装 Playwright Chromium”（Linux 下会安装系统依赖，可能需要 sudo 权限），完成后重试。`;
+		detail = l10n.t(
+			'Chromium system dependencies are missing ({libraries}). Run “Install Playwright Chromium” on the extension host and retry. On Linux, this installs system dependencies and may require sudo.',
+			{ libraries: libraries.join(', ') || l10n.t('unknown') },
+		);
 	} else if (
 		/No usable sandbox|Running as root without --no-sandbox|Failed to move to new namespace|SUID sandbox helper binary|sandboxing failed/i.test(
 			reason,
 		)
 	) {
 		category = 'sandbox';
-		detail = 'Chromium 沙箱初始化失败，请检查运行扩展的主机或容器的用户命名空间与沙箱权限。';
+		detail = l10n.t(
+			'Chromium sandbox initialization failed. Check user namespaces and sandbox permissions on the extension host or container.',
+		);
 	} else if (
 		(error instanceof Error &&
 			'code' in error &&
@@ -79,15 +93,18 @@ export function diagnoseBrowserStartup(
 		/Permission denied|spawn .* EACCES/i.test(reason)
 	) {
 		category = 'permissions';
-		detail =
-			'运行扩展的用户没有浏览器执行权限或会话目录读写权限，请检查扩展存储目录和浏览器安装目录的权限。';
+		detail = l10n.t(
+			'The extension user cannot execute the browser or access the session directory. Check permissions on the extension storage and browser installation directories.',
+		);
 	} else if (
 		/ProcessSingleton|profile appears to be in use|user data directory is already in use/i.test(
 			reason,
 		)
 	) {
 		category = 'profile-in-use';
-		detail = '扩展的浏览器会话目录正被占用，请关闭其他使用此会话的浏览器或 VS Code 窗口后重试。';
+		detail = l10n.t(
+			'The extension browser profile is in use. Close other browsers or VS Code windows using this session and try again.',
+		);
 	}
 
 	let code: SourceError['code'] = 'browser-startup';
@@ -99,6 +116,10 @@ export function diagnoseBrowserStartup(
 	return {
 		category,
 		missingLibraries: [...missingLibraries].slice(0, 20),
-		error: new SourceError(code, `无法启动${browserName}。${detail}`, false),
+		error: new SourceError(
+			code,
+			l10n.t('Unable to start {browser}. {detail}', { browser: browserName, detail }),
+			false,
+		),
 	};
 }

@@ -1,0 +1,23 @@
+{
+	"extension.description": "在 Visual Studio Code 中浏览和阅读小红书笔记。",
+	"settings.browserMode.description": "浏览器运行模式，默认使用不显示窗口的 headless 模式。更改后请重新加载 VS Code 窗口。",
+	"settings.browserMode.headless": "不显示浏览器窗口。登录和内容浏览共用同一会话。",
+	"settings.browserMode.window": "使用普通 Chromium，需要图形桌面。启动或打开页面时可能出现窗口弹出、跳动或焦点切换；自动最小化也可能失败，影响使用体验。",
+	"commands.refreshHomeFeed": "xiaohongshu-fisher: 刷新推荐",
+	"commands.refreshExploreFeed": "xiaohongshu-fisher: 刷新发现",
+	"commands.searchNotes": "xiaohongshu-fisher: 搜索小红书笔记",
+	"commands.loadMore": "xiaohongshu-fisher: 加载更多",
+	"commands.openNote": "xiaohongshu-fisher: 打开笔记",
+	"commands.openInBrowser": "xiaohongshu-fisher: 在浏览器中打开",
+	"commands.openLogin": "xiaohongshu-fisher: 打开小红书扫码登录",
+	"commands.refreshLoginQr": "xiaohongshu-fisher: 刷新小红书登录二维码",
+	"commands.installBrowserRuntime": "xiaohongshu-fisher: 安装 Playwright Chromium",
+	"commands.clearSession": "xiaohongshu-fisher: 清除小红书会话",
+	"views.container": "小红书",
+	"views.homeFeed": "推荐",
+	"views.exploreFeed": "发现",
+	"views.searchResults": "搜索结果",
+	"welcome.homeFeed": "首次使用？先用小红书 App 扫码登录。\n[扫码登录](command:xiaohongshu-fisher.openLogin)\n已有会话？[直接刷新推荐](command:xiaohongshu-fisher.refreshHomeFeed)。",
+	"welcome.exploreFeed": "首次使用？先用小红书 App 扫码登录。\n[扫码登录](command:xiaohongshu-fisher.openLogin)\n已有会话？[直接刷新发现](command:xiaohongshu-fisher.refreshExploreFeed)。",
+	"welcome.searchResults": "首次使用？先用小红书 App 扫码登录。\n[扫码登录](command:xiaohongshu-fisher.openLogin)\n已有会话？[直接搜索笔记](command:xiaohongshu-fisher.searchNotes)。"
+}

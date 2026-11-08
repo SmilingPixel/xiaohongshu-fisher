@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 import { randomBytes } from 'node:crypto';
 import {
 	LOGIN_TERMINAL_STATES,
@@ -59,6 +60,14 @@ export function toLoginAssistantViewState(
 	};
 }
 
+/** Escape script delimiters before embedding translation data in a nonce-protected script. */
+export function serializeScriptData(value: unknown): string {
+	return JSON.stringify(value).replace(
+		/[<>&\u2028\u2029]/g,
+		(character) => '\\u' + character.charCodeAt(0).toString(16).padStart(4, '0'),
+	);
+}
+
 function escapeHtml(value: string): string {
 	return value.replace(
 		/[&<>"']/g,
@@ -73,7 +82,11 @@ function escapeHtml(value: string): string {
 	);
 }
 
-export function renderLoginAssistantHtml(snapshot: LoginSnapshot, cspSource: string): string {
+export function renderLoginAssistantHtml(
+	snapshot: LoginSnapshot,
+	cspSource: string,
+	language = 'en',
+): string {
 	const scriptNonce = randomBytes(18).toString('base64');
 	const styleNonce = randomBytes(18).toString('base64');
 	const csp = [
@@ -89,14 +102,26 @@ export function renderLoginAssistantHtml(snapshot: LoginSnapshot, cspSource: str
 		viewState.status === 'page-error' ||
 		viewState.status === 'verification-required';
 	const canRefresh = terminal && viewState.status !== 'logged-in';
-	const retryLabel = requiresManualRetry ? '重新尝试登录' : '刷新二维码';
+	const messages = {
+		retry: l10n.t('Retry Login'),
+		refresh: l10n.t('Refresh QR Code'),
+		fetching: l10n.t('Fetching QR code…'),
+		close: l10n.t('Close'),
+		expired: l10n.t('The QR code has expired. Please refresh it.'),
+		success: l10n.t('Login successful. Return to the list and refresh the content.'),
+		verifying: l10n.t('Confirming login status…'),
+		unavailable: l10n.t('The QR code is unavailable. Follow the instructions above.'),
+		done: l10n.t('Done'),
+		countdown: l10n.t('QR code expires in about {seconds} seconds.', { seconds: '{seconds}' }),
+	};
+	const retryLabel = requiresManualRetry ? l10n.t('Retry Login') : l10n.t('Refresh QR Code');
 	return /* HTML */ `<!DOCTYPE html>
-		<html lang="zh-CN">
+		<html lang="${language.toLowerCase() === 'zh-cn' ? 'zh-CN' : 'en'}">
 			<head>
 				<meta charset="UTF-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 				<meta http-equiv="Content-Security-Policy" content="${csp}" />
-				<title>小红书扫码登录</title>
+				<title>${escapeHtml(l10n.t('Xiaohongshu QR Login'))}</title>
 				<style nonce="${styleNonce}">
 					:root {
 						color-scheme: light dark;
@@ -154,33 +179,35 @@ export function renderLoginAssistantHtml(snapshot: LoginSnapshot, cspSource: str
 				</style>
 			</head>
 			<body>
-				<h1>小红书扫码登录</h1>
+				<h1>${escapeHtml(l10n.t('Xiaohongshu QR Login'))}</h1>
 				<p class="status" id="status" role="status" aria-live="polite">
 					${escapeHtml(viewState.message)}
 				</p>
 				<div class="qr-stage">
 					<img
 						id="qr-image"
-						alt="小红书登录二维码，请使用小红书 App 扫码"
+						alt="${escapeHtml(l10n.t('Xiaohongshu login QR code. Scan with the Xiaohongshu app.'))}"
 						width="280"
 						height="280"
 						hidden
 					/>
-					<p class="notice" id="qr-placeholder">正在获取二维码…</p>
+					<p class="notice" id="qr-placeholder">${escapeHtml(l10n.t('Fetching QR code…'))}</p>
 				</div>
 				<p class="notice" id="official-link" ${viewState.pageUrl ? '' : ' hidden'}>
-					<a href="#">在浏览器中查看官方页面</a>（外部浏览器操作不会同步到扩展会话）
+					<a href="#">${escapeHtml(l10n.t('View Official Page in Browser'))}</a
+					>${escapeHtml(l10n.t('(Actions in the external browser do not sync to the extension session.)'))}
 				</p>
 				<p class="notice" id="countdown"></p>
 				<div class="actions">
-					<button id="refresh" ${canRefresh ? '' : ' disabled'}>${retryLabel}</button>
-					<button id="close">关闭</button>
+					<button id="refresh" ${canRefresh ? '' : ' disabled'}>${escapeHtml(retryLabel)}</button>
+					<button id="close">${escapeHtml(l10n.t('Close'))}</button>
 				</div>
 				<p class="notice">
-					请使用小红书手机客户端扫码并确认。若页面要求其他验证，请停止此流程并稍后重试；本扩展不会自动处理验证码。
+					${escapeHtml(l10n.t('Scan and confirm with the Xiaohongshu mobile app. If additional verification is required, stop and try again later. This extension does not automate verification challenges.'))}
 				</p>
 				<script nonce="${scriptNonce}">
 					const vscode = acquireVsCodeApi();
+					const messages = ${serializeScriptData(messages)};
 					let expiresAt = ${viewState.expiresAt};
 					let currentStatus = '${escapeHtml(viewState.status)}';
 					let attemptInFlight = true;
@@ -215,25 +242,25 @@ export function renderLoginAssistantHtml(snapshot: LoginSnapshot, cspSource: str
 								currentStatus === 'expired' ||
 								currentStatus === 'qr-unavailable'
 							);
-						refresh.textContent = requiresManualRetry ? '重新尝试登录' : '刷新二维码';
+						refresh.textContent = requiresManualRetry ? messages.retry : messages.refresh;
 						let countdown = '';
 						if (expiresAt && !locallyExpired) {
-							countdown = '二维码有效期约 ' + remaining + ' 秒';
+							countdown = messages.countdown.replace('{seconds}', String(remaining));
 						}
 						if (locallyExpired || currentStatus === 'expired') {
-							placeholder.textContent = '二维码已过期，请刷新二维码。';
+							placeholder.textContent = messages.expired;
 						} else if (currentStatus === 'logged-in') {
-							placeholder.textContent = '登录成功，可以返回列表刷新内容。';
+							placeholder.textContent = messages.success;
 						} else if (currentStatus === 'loading') {
-							placeholder.textContent = '正在获取二维码…';
+							placeholder.textContent = messages.fetching;
 						} else if (currentStatus === 'verifying-session') {
-							placeholder.textContent = '正在确认登录状态…';
+							placeholder.textContent = messages.verifying;
 						} else {
-							placeholder.textContent = '二维码暂不可用，请按上方提示操作。';
+							placeholder.textContent = messages.unavailable;
 						}
 						document.getElementById('countdown').textContent = countdown;
 						document.getElementById('close').textContent =
-							currentStatus === 'logged-in' ? '完成' : '关闭';
+							currentStatus === 'logged-in' ? messages.done : messages.close;
 					};
 					updateDisplay();
 					setInterval(updateDisplay, 1000);

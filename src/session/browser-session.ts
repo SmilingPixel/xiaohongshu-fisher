@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { BrowserContext, CDPSession, Page, Response } from 'playwright';
@@ -116,7 +117,10 @@ export class BrowserSession implements vscode.Disposable {
 		}
 		this.lastLoginSnapshot = undefined;
 		this.emitLoginSnapshot(
-			this.toLoginSnapshot({ status: 'loading', message: '正在初始化登录环境并获取二维码…' }),
+			this.toLoginSnapshot({
+				status: 'loading',
+				message: l10n.t('Initializing the login environment and fetching a QR code…'),
+			}),
 		);
 		const context = await this.getContext();
 		if (generation !== this.loginGeneration) {
@@ -162,7 +166,9 @@ export class BrowserSession implements vscode.Disposable {
 			return this.publishTerminal(
 				{
 					status: 'page-error',
-					message: '暂时无法打开官方登录页，请检查运行扩展的主机所使用的网络后重试。',
+					message: l10n.t(
+						'Unable to open the official login page. Check the network of the extension host and try again.',
+					),
 				},
 				'login-navigation',
 			);
@@ -174,7 +180,10 @@ export class BrowserSession implements vscode.Disposable {
 		page.on('close', () => {
 			if (page === this.loginPage && generation === this.loginGeneration) {
 				this.publishTerminal(
-					{ status: 'page-error', message: '登录浏览器页面已关闭，请重新打开扫码登录。' },
+					{
+						status: 'page-error',
+						message: l10n.t('The login browser page has closed. Reopen QR login.'),
+					},
 					'login-close',
 				);
 			}
@@ -221,7 +230,16 @@ export class BrowserSession implements vscode.Disposable {
 					status: [401, 403, 406, 429, 461, 471].includes(response.status())
 						? 'access-restricted'
 						: 'page-error',
-					message: `官方会话初始化失败（HTTP ${response.status()}），无法继续获取登录二维码。${this.browserMode === 'headless' ? '请在扩展设置中选择普通浏览器模式并重新加载窗口后重试。' : '请按官方提示处理后重试。'}`,
+					message:
+						this.browserMode === 'headless'
+							? l10n.t(
+									'Official session initialization failed (HTTP {status}). Unable to fetch a login QR code. Select window mode in the extension settings and reload the window before retrying.',
+									{ status: response.status() },
+								)
+							: l10n.t(
+									'Official session initialization failed (HTTP {status}). Unable to fetch a login QR code. Follow the official instructions and retry.',
+									{ status: response.status() },
+								),
 				},
 				'login-activate',
 			);
@@ -294,7 +312,7 @@ export class BrowserSession implements vscode.Disposable {
 			this.emitLoginSnapshot(
 				this.toLoginSnapshot({
 					status: 'waiting-scan',
-					message: '请使用小红书手机客户端扫描二维码并确认登录。',
+					message: l10n.t('Scan the QR code with the Xiaohongshu mobile app and confirm login.'),
 				}),
 			);
 		} catch {
@@ -302,7 +320,10 @@ export class BrowserSession implements vscode.Disposable {
 				return;
 			}
 			this.publishTerminal(
-				{ status: 'qr-unavailable', message: '无法生成登录二维码，请刷新后重试。' },
+				{
+					status: 'qr-unavailable',
+					message: l10n.t('Unable to generate the login QR code. Refresh and try again.'),
+				},
 				'qr-render',
 			);
 		}
@@ -350,7 +371,9 @@ export class BrowserSession implements vscode.Disposable {
 			this.publishTerminal(
 				{
 					status: 'page-error',
-					message: '暂时无法读取官方登录页，已暂停登录。请检查网络后手动重试。',
+					message: l10n.t(
+						'Unable to read the official login page. Login has paused. Check your network and retry manually.',
+					),
 				},
 				'login-poll',
 			);
@@ -381,8 +404,9 @@ export class BrowserSession implements vscode.Disposable {
 				return this.publishTerminal(
 					{
 						status: 'qr-unavailable',
-						message:
-							'未能在规定时间内获取官方二维码，请检查运行扩展的主机所使用的网络后重试。可在“输出 → Xiaohongshu Fisher”查看请求诊断。',
+						message: l10n.t(
+							'The official QR code was not received in time. Check the network of the extension host and retry. Request diagnostics are available in Output → Xiaohongshu Fisher.',
+						),
 					},
 					'login-acquisition',
 				);
@@ -423,7 +447,10 @@ export class BrowserSession implements vscode.Disposable {
 			return this.publishTerminal(detection, 'login-inspection');
 		}
 		if (detection.status === 'waiting-scan' && !this.loginPng) {
-			return this.toLoginSnapshot({ status: 'loading', message: '正在等待官方登录二维码…' });
+			return this.toLoginSnapshot({
+				status: 'loading',
+				message: l10n.t('Waiting for the official login QR code…'),
+			});
 		}
 		return this.toLoginSnapshot(detection);
 	}
@@ -443,7 +470,12 @@ export class BrowserSession implements vscode.Disposable {
 	}
 
 	private cancelledLoginSnapshot(): LoginSnapshot {
-		return { status: 'loading', message: '登录操作已取消。', qrRevision: 0, expiresAt: 0 };
+		return {
+			status: 'loading',
+			message: l10n.t('Login was cancelled.'),
+			qrRevision: 0,
+			expiresAt: 0,
+		};
 	}
 
 	private handleLoginNavigation(url: string, generation: number): void {
@@ -459,7 +491,9 @@ export class BrowserSession implements vscode.Disposable {
 			this.publishTerminal(
 				{
 					status: 'page-error',
-					message: '登录页跳转到了不受支持的地址，已停止读取。请检查官方页面后重新打开登录。',
+					message: l10n.t(
+						'The login page redirected to an unsupported address. Reading has stopped. Check the official page and reopen login.',
+					),
 				},
 				'login-navigation',
 			);
@@ -478,16 +512,23 @@ export class BrowserSession implements vscode.Disposable {
 					status: [401, 403, 406, 429].includes(failure.httpStatus ?? 0)
 						? 'access-restricted'
 						: 'page-error',
-					message: `官方二维码接口请求失败（HTTP ${failure.httpStatus}）。请按官方提示检查会话或网络后重试。`,
+					message: l10n.t(
+						'The official QR API request failed (HTTP {status}). Follow the official instructions to check your session or network and retry.',
+						{ status: failure.httpStatus ?? 'unknown' },
+					),
 				},
 				'login-create',
 			);
 		}
-		let message = '官方二维码接口返回了无法识别的数据，请稍后重试。';
+		let message = l10n.t('The official QR API returned unrecognized data. Please try again later.');
 		if (failure.reason === 'timeout') {
-			message = '请求官方二维码接口超时，请检查运行扩展的主机所使用的网络后重试。';
+			message = l10n.t(
+				'The official QR API request timed out. Check the network of the extension host and retry.',
+			);
 		} else if (failure.reason === 'network') {
-			message = '无法完成官方二维码接口请求，请检查运行扩展的主机所使用的网络后重试。';
+			message = l10n.t(
+				'Unable to complete the official QR API request. Check the network of the extension host and retry.',
+			);
 		}
 		return this.publishTerminal({ status: 'qr-unavailable', message }, 'login-create');
 	}
@@ -603,7 +644,10 @@ export class BrowserSession implements vscode.Disposable {
 							this.context = undefined;
 							if (this.loginPage) {
 								this.publishTerminal(
-									{ status: 'page-error', message: '浏览器会话已关闭，请重新打开扫码登录。' },
+									{
+										status: 'page-error',
+										message: l10n.t('The browser session has closed. Reopen QR login.'),
+									},
 									'browser-close',
 								);
 							}

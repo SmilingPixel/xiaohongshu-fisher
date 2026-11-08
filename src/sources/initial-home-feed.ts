@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 import type { Page } from 'playwright';
 import { SourceError } from '../models/source-error';
 
@@ -55,7 +56,11 @@ export async function readInitialHomeFeed(page: Page, limit: number): Promise<un
 		return undefined;
 	}
 	if (serialized === null || Buffer.byteLength(serialized, 'utf8') > limit) {
-		throw new SourceError('parse-failure', '页面首屏数据超过允许的读取大小。', false);
+		throw new SourceError(
+			'parse-failure',
+			l10n.t('The initial page data exceeds the allowed size.'),
+			false,
+		);
 	}
 	return JSON.parse(serialized) as unknown;
 }

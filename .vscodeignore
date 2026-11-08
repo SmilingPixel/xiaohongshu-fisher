@@ -24,3 +24,4 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+l10n-check.mjs

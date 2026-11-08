@@ -10,19 +10,21 @@ import {
 import { SourceError } from '../models/source-error';
 import type { ExtensionLogger } from '../logging';
 
-const INITIAL_SNAPSHOT: LoginSnapshot = {
-	status: 'loading',
-	message: '正在初始化登录环境并获取二维码…',
-	qrRevision: 0,
-	expiresAt: 0,
-};
+function initialSnapshot(): LoginSnapshot {
+	return {
+		status: 'loading',
+		message: vscode.l10n.t('Initializing the login environment and fetching a QR code…'),
+		qrRevision: 0,
+		expiresAt: 0,
+	};
+}
 
 /** Coordinates login commands and publishes sanitized state after the WebView's ready handshake. */
 export class LoginAssistant implements vscode.Disposable {
 	private panel?: vscode.WebviewPanel;
 	private readonly panelDisposables: vscode.Disposable[] = [];
 	private readonly snapshotSubscription: vscode.Disposable;
-	private snapshot: LoginSnapshot = INITIAL_SNAPSHOT;
+	private snapshot: LoginSnapshot = initialSnapshot();
 	private webviewReady = false;
 	private attemptInFlight = false;
 	private attemptGeneration = 0;
@@ -67,8 +69,10 @@ export class LoginAssistant implements vscode.Disposable {
 		this.attemptInFlight = true;
 		this.logger?.info(refresh ? 'Refreshing login QR.' : 'Opening QR login assistant.');
 		this.update({
-			...INITIAL_SNAPSHOT,
-			message: refresh ? '正在请求新的登录二维码…' : INITIAL_SNAPSHOT.message,
+			...initialSnapshot(),
+			message: refresh
+				? vscode.l10n.t('Requesting a new login QR code…')
+				: initialSnapshot().message,
 		});
 		try {
 			const snapshot = await (refresh ? this.session.refreshLoginQr() : this.session.startLogin());
@@ -85,7 +89,8 @@ export class LoginAssistant implements vscode.Disposable {
 			);
 			this.update({
 				status: 'page-error',
-				message: error instanceof Error ? error.message : '无法启动登录流程。',
+				message:
+					error instanceof SourceError ? error.message : vscode.l10n.t('Unable to start login.'),
 				qrRevision: 0,
 				expiresAt: 0,
 			});
@@ -104,7 +109,7 @@ export class LoginAssistant implements vscode.Disposable {
 	private getPanel(): vscode.WebviewPanel {
 		const panel = vscode.window.createWebviewPanel(
 			'xiaohongshuFisher.loginAssistant',
-			'小红书扫码登录',
+			vscode.l10n.t('Xiaohongshu QR Login'),
 			vscode.ViewColumn.Active,
 			{
 				enableScripts: true,
@@ -112,7 +117,7 @@ export class LoginAssistant implements vscode.Disposable {
 			},
 		);
 		this.panel = panel;
-		this.snapshot = INITIAL_SNAPSHOT;
+		this.snapshot = initialSnapshot();
 		this.webviewReady = false;
 		this.panelDisposables.push(
 			panel.webview.onDidReceiveMessage((value: unknown) => this.onMessage(value)),
@@ -121,13 +126,17 @@ export class LoginAssistant implements vscode.Disposable {
 				this.webviewReady = false;
 				this.attemptGeneration++;
 				this.attemptInFlight = false;
-				this.snapshot = INITIAL_SNAPSHOT;
+				this.snapshot = initialSnapshot();
 				this.session.stopLogin();
 				this.qrImageProvider.clear();
 				this.panelDisposables.splice(0).forEach((disposable) => disposable.dispose());
 			}),
 		);
-		panel.webview.html = renderLoginAssistantHtml(this.snapshot, panel.webview.cspSource);
+		panel.webview.html = renderLoginAssistantHtml(
+			this.snapshot,
+			panel.webview.cspSource,
+			vscode.env.language,
+		);
 		return panel;
 	}
 

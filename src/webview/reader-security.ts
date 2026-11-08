@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 import { randomBytes } from 'node:crypto';
 import type { NoteDetail } from '../models/content';
 import { IMAGE_HOSTS, trustedImageUrl } from '../models/image-url';
@@ -33,11 +34,24 @@ export function escapeHtml(value: string): string {
 	);
 }
 
-function formatStats(detail: NoteDetail): string {
+function formatStats(detail: NoteDetail, language: string): string {
+	const numbers = new Intl.NumberFormat(language.toLowerCase() === 'zh-cn' ? 'zh-CN' : 'en');
 	const parts = [
-		detail.stats?.likes === undefined ? undefined : `赞 ${detail.stats.likes}`,
-		detail.stats?.collects === undefined ? undefined : `收藏 ${detail.stats.collects}`,
-		detail.stats?.comments === undefined ? undefined : `评论 ${detail.stats.comments}`,
+		detail.stats?.likes === undefined
+			? undefined
+			: l10n.t('Likes: {count}', {
+					count: numbers.format(detail.stats.likes),
+				}),
+		detail.stats?.collects === undefined
+			? undefined
+			: l10n.t('Saves: {count}', {
+					count: numbers.format(detail.stats.collects),
+				}),
+		detail.stats?.comments === undefined
+			? undefined
+			: l10n.t('Comments: {count}', {
+					count: numbers.format(detail.stats.comments),
+				}),
 	].filter((part): part is string => Boolean(part));
 	return parts.map(escapeHtml).join(' · ');
 }
@@ -56,18 +70,25 @@ function renderMedia(detail: NoteDetail): string {
 		.join('');
 }
 
-export function renderNoteDetail(detail: NoteDetail): string {
+export function renderNoteDetail(detail: NoteDetail, language = 'en'): string {
 	const author = detail.author?.name
 		? `<p class="author">${escapeHtml(detail.author.name)}</p>`
 		: '';
 	const topics = detail.topics.length
 		? `<p class="topics">${detail.topics.map((topic) => `#${escapeHtml(topic)}`).join('　')}</p>`
 		: '';
-	const stats = formatStats(detail);
+	const stats = formatStats(detail, language);
+	let publishedAt = detail.publishedAt;
+	if (publishedAt && !Number.isNaN(Date.parse(publishedAt))) {
+		publishedAt = new Intl.DateTimeFormat(language.toLowerCase() === 'zh-cn' ? 'zh-CN' : 'en', {
+			dateStyle: 'medium',
+			timeStyle: 'short',
+		}).format(new Date(publishedAt));
+	}
 	return `<article>
 		${author}
 		<h1>${escapeHtml(detail.title)}</h1>
-		${detail.publishedAt ? `<p class="muted">${escapeHtml(detail.publishedAt)}</p>` : ''}
+		${publishedAt ? `<p class="muted">${escapeHtml(publishedAt)}</p>` : ''}
 		${stats ? `<p class="muted">${stats}</p>` : ''}
 		<div class="body">${escapeHtml(detail.body).replace(/\r?\n/g, '<br>')}</div>
 		${topics}
@@ -76,7 +97,7 @@ export function renderNoteDetail(detail: NoteDetail): string {
 }
 
 /** Content must come from the escaped renderers; the shell grants scripts and styles per-document nonces. */
-export function renderReaderHtml(title: string, content: string): string {
+export function renderReaderHtml(title: string, content: string, language = 'en'): string {
 	const scriptNonce = randomBytes(18).toString('base64');
 	const styleNonce = randomBytes(18).toString('base64');
 	const csp = [
@@ -86,7 +107,7 @@ export function renderReaderHtml(title: string, content: string): string {
 		`script-src 'nonce-${scriptNonce}'`,
 	].join('; ');
 	return /* HTML */ `<!DOCTYPE html>
-		<html lang="zh-CN">
+		<html lang="${language.toLowerCase() === 'zh-cn' ? 'zh-CN' : 'en'}">
 			<head>
 				<meta charset="UTF-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -137,6 +158,7 @@ export function renderReaderHtml(title: string, content: string): string {
 					}
 					.actions {
 						display: flex;
+						flex-wrap: wrap;
 						gap: 8px;
 						margin: 8px 0 20px;
 					}
@@ -155,8 +177,8 @@ export function renderReaderHtml(title: string, content: string): string {
 			</head>
 			<body>
 				<nav class="actions">
-					<button data-command="open-in-browser">在浏览器中打开</button
-					><button data-command="retry">重新读取</button>
+					<button data-command="open-in-browser">${escapeHtml(l10n.t('Open in Browser'))}</button
+					><button data-command="retry">${escapeHtml(l10n.t('Reload'))}</button>
 				</nav>
 				<main>${content}</main>
 				<script nonce="${scriptNonce}">

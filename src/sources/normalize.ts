@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 // Platform field aliases stay here so views only need the normalized content models.
 import type { FeedItem, MediaItem, MediaType, NoteDetail, PageResult } from '../models/content';
 import { SourceError } from '../models/source-error';
@@ -190,7 +191,7 @@ export function normalizeFeedItem(value: unknown): FeedItem | undefined {
 	const title =
 		firstString(card, 'display_title', 'displayTitle', 'title') ??
 		excerpt?.slice(0, 120) ??
-		'无标题笔记';
+		l10n.t('Untitled Note');
 	const media = getImages(card);
 	const video = getVideo(card);
 	if (video) {
@@ -227,11 +228,19 @@ export function normalizePageResponse(
 	const root = asRecord(value);
 	const data = root ? (firstRecord(root, 'data') ?? root) : undefined;
 	if (!data) {
-		throw new SourceError('parse-failure', '页面返回的数据格式暂不支持。', false);
+		throw new SourceError(
+			'parse-failure',
+			l10n.t('The page returned an unsupported data format.'),
+			false,
+		);
 	}
 	const rawItems = firstArray(data, 'items', 'notes');
 	if (!rawItems) {
-		throw new SourceError('parse-failure', '页面返回的数据格式暂不支持。', false);
+		throw new SourceError(
+			'parse-failure',
+			l10n.t('The page returned an unsupported data format.'),
+			false,
+		);
 	}
 	const items = rawItems.flatMap((item) => {
 		const normalized = normalizeFeedItem(item);
@@ -255,7 +264,7 @@ export function normalizeNoteDetail(value: unknown): NoteDetail {
 	const card = getRawCard(items[0]) ?? getRawCard(value);
 	const feedItem = card ? normalizeFeedItem(card) : undefined;
 	if (!card || !feedItem) {
-		throw new SourceError('not-found', '笔记暂时无法读取。', false);
+		throw new SourceError('not-found', l10n.t('This note cannot be read at the moment.'), false);
 	}
 
 	const media = getImages(card);

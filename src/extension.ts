@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 import * as vscode from 'vscode';
 import { ContentApplicationService, type FeedKey } from './application/content-service';
 import type { FeedItem } from './models/content';
@@ -63,6 +64,9 @@ function getTrustedNoteUrl(
 
 /** Wires services and views; browser startup remains deferred until a user command needs it. */
 export function activate(context: vscode.ExtensionContext): void {
+	if (vscode.l10n.bundle) {
+		l10n.config({ contents: vscode.l10n.bundle });
+	}
 	const logger = new ExtensionLogger();
 	const session = new BrowserSession(context.globalStorageUri, logger, () =>
 		vscode.workspace
@@ -122,14 +126,14 @@ export function activate(context: vscode.ExtensionContext): void {
 	});
 	registerCommand(context, 'searchNotes', async () => {
 		const query = await vscode.window.showInputBox({
-			prompt: '搜索小红书笔记',
+			prompt: vscode.l10n.t('Search Xiaohongshu notes'),
 			ignoreFocusOut: true,
 		});
 		if (query === undefined) {
 			return;
 		}
 		if (!query.trim()) {
-			void vscode.window.showWarningMessage('请输入搜索关键词。');
+			void vscode.window.showWarningMessage(vscode.l10n.t('Enter a search keyword.'));
 			return;
 		}
 		return application.searchNotes(query);
@@ -140,11 +144,11 @@ export function activate(context: vscode.ExtensionContext): void {
 			key ??
 			(await vscode.window.showQuickPick(
 				[
-					{ label: '推荐', key: 'home' as const },
-					{ label: '发现', key: 'explore' as const },
-					{ label: '搜索结果', key: 'search' as const },
+					{ label: vscode.l10n.t('Home'), key: 'home' as const },
+					{ label: vscode.l10n.t('Explore'), key: 'explore' as const },
+					{ label: vscode.l10n.t('Search Results'), key: 'search' as const },
 				],
-				{ placeHolder: '选择要继续加载的列表' },
+				{ placeHolder: vscode.l10n.t('Select a list to load more items') },
 			));
 		if (typeof selectedView === 'string') {
 			return application.loadMore(selectedView);
@@ -172,7 +176,9 @@ export function activate(context: vscode.ExtensionContext): void {
 				return;
 			}
 		}
-		void vscode.window.showWarningMessage('没有可读取的小红书笔记。');
+		void vscode.window.showWarningMessage(
+			vscode.l10n.t('No Xiaohongshu note is available to read.'),
+		);
 	});
 	registerCommand(context, 'openInBrowser', async (value: unknown) => {
 		const uri = getTrustedNoteUrl(value, (id) => application.getNoteUrl(id));
@@ -180,7 +186,9 @@ export function activate(context: vscode.ExtensionContext): void {
 			await vscode.env.openExternal(uri);
 			return;
 		}
-		void vscode.window.showWarningMessage('没有可打开的小红书笔记链接。');
+		void vscode.window.showWarningMessage(
+			vscode.l10n.t('No Xiaohongshu note link is available to open.'),
+		);
 	});
 	registerCommand(context, 'openLogin', async () => {
 		try {
@@ -189,7 +197,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			const sourceError = error instanceof SourceError ? error : undefined;
 			if (sourceError?.code === 'browser-missing' || sourceError?.code === 'browser-dependencies') {
 				void vscode.window
-					.showErrorMessage(sourceError.message, '安装 Playwright Chromium')
+					.showErrorMessage(sourceError.message, vscode.l10n.t('Install Playwright Chromium'))
 					.then((selection) => {
 						if (selection) {
 							void vscode.commands.executeCommand(`${COMMAND_PREFIX}installBrowserRuntime`);
@@ -197,7 +205,9 @@ export function activate(context: vscode.ExtensionContext): void {
 					});
 				return;
 			}
-			void vscode.window.showErrorMessage(sourceError?.message ?? '无法启动登录流程。');
+			void vscode.window.showErrorMessage(
+				sourceError?.message ?? vscode.l10n.t('Unable to start login.'),
+			);
 		}
 	});
 	registerCommand(context, 'refreshLoginQr', () => {
@@ -205,7 +215,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	});
 	registerCommand(context, 'installBrowserRuntime', () => {
 		const terminal = vscode.window.createTerminal({
-			name: 'Xiaohongshu Fisher: Install Browser',
+			name: vscode.l10n.t('Xiaohongshu Fisher: Install Browser'),
 			cwd: context.extensionUri.fsPath,
 		});
 		terminal.show();
@@ -216,14 +226,17 @@ export function activate(context: vscode.ExtensionContext): void {
 		);
 	});
 	registerCommand(context, 'clearSession', async () => {
+		const clearLabel = vscode.l10n.t('Clear Session');
 		const answer = await vscode.window.showWarningMessage(
-			'清除小红书 Fisher 保存的独立浏览器会话？',
+			vscode.l10n.t('Clear the browser session saved by Xiaohongshu Fisher?'),
 			{ modal: true },
-			'清除会话',
+			clearLabel,
 		);
-		if (answer === '清除会话') {
+		if (answer === clearLabel) {
 			await session.clear();
-			void vscode.window.showInformationMessage('独立浏览器会话已清除。');
+			void vscode.window.showInformationMessage(
+				vscode.l10n.t('The extension browser session has been cleared.'),
+			);
 		}
 	});
 }

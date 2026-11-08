@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import type { LoginSnapshot, LoginStatus } from '../../session/login-model';
 import {
 	isLoginAssistantMessage,
+	serializeScriptData,
 	renderLoginAssistantHtml,
 	toLoginAssistantViewState,
 } from '../../webview/login-assistant-security';
@@ -31,6 +32,10 @@ test('accepts only fixed login assistant message commands', () => {
 test('escapes status text and never sends QR image data to the WebView', () => {
 	const html = renderLoginAssistantHtml(snapshot, cspSource);
 	const state = toLoginAssistantViewState(snapshot);
+	const translatedText = '</script><img src=x onerror=alert(1)>&\u2028\u2029';
+	const serialized = serializeScriptData({ text: translatedText });
+	assert.doesNotMatch(serialized, /[<>&\u2028\u2029]/);
+	assert.equal(JSON.parse(serialized).text, translatedText);
 	assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
 	assert.match(html, /default-src 'none'/);
 	assert.doesNotMatch(html, /data:image\/png;base64/);
@@ -51,7 +56,7 @@ test('hides QR and countdown for terminal states', () => {
 	const html = renderLoginAssistantHtml(terminal, cspSource);
 	assert.equal(state.qrAvailable, false);
 	assert.equal(state.expiresAt, 0);
-	assert.match(html, /重新尝试登录/);
+	assert.match(html, /Retry Login/);
 	assert.match(html, /let expiresAt = 0;/);
 	assert.equal(state.pageUrl, 'https://www.xiaohongshu.com/');
 });

@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 export type OfficialPageErrorKind = 'ip-risk' | 'official-error-page';
 
 export interface OfficialPageError {
@@ -38,16 +39,22 @@ export function classifyOfficialErrorRedirect(value: string): OfficialPageError 
 		return {
 			kind: 'ip-risk',
 			platformCode,
-			message:
-				'小红书提示当前网络存在 IP 风险（300012），已停止本次操作。请检查运行扩展的主机所使用的网络，按官方提示处理后手动重试。',
+			message: l10n.t(
+				'Xiaohongshu reported an IP risk on the current network (300012). The operation has stopped. Check the network of the extension host, follow the official instructions, and retry manually.',
+			),
 		};
 	}
 	return {
 		kind: 'official-error-page',
 		platformCode,
 		message: platformCode
-			? `小红书返回了错误页（错误码：${platformCode}），已停止本次操作。请在官方页面查看提示，处理后手动重试。`
-			: '小红书返回了错误页，暂时无法完成本次操作。请在官方页面查看提示，处理后手动重试。',
+			? l10n.t(
+					'Xiaohongshu returned an error page (code: {code}). The operation has stopped. Follow the official page instructions and retry manually.',
+					{ code: platformCode },
+				)
+			: l10n.t(
+					'Xiaohongshu returned an error page. The operation cannot be completed. Follow the official page instructions and retry manually.',
+				),
 	};
 }
 
