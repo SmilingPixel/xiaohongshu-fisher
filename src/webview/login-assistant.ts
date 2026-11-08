@@ -7,6 +7,7 @@ import {
 	renderLoginAssistantHtml,
 	toLoginAssistantViewState,
 } from './login-assistant-security';
+import { SourceError } from '../models/source-error';
 import type { ExtensionLogger } from '../logging';
 
 const INITIAL_SNAPSHOT: LoginSnapshot = {
@@ -79,8 +80,8 @@ export class LoginAssistant implements vscode.Disposable {
 				return;
 			}
 			this.logger?.warn(
-				'QR login assistant failed to start: %s.',
-				error instanceof Error ? error.name : 'unknown error',
+				'QR login assistant failed to start (code: %s).',
+				error instanceof SourceError ? error.code : 'unknown',
 			);
 			this.update({
 				status: 'page-error',

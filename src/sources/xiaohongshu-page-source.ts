@@ -100,7 +100,10 @@ export class XiaohongshuPageSource implements ContentSource {
 			throw new SourceError('unknown', '请求已取消。', false);
 		}
 		if (cursor === undefined) {
-			this.logger?.debug('Opening content stream: %s.', key.startsWith('search:') ? 'search' : key);
+			this.logger?.debug(
+				'Opening content stream (feed: %s).',
+				key.startsWith('search:') ? 'search' : key,
+			);
 			await this.closeStream(key);
 			const page = await this.session.openPage();
 			const stream: Stream = { page, nextIndex: 0, closed: false };
@@ -315,7 +318,10 @@ export class XiaohongshuPageSource implements ContentSource {
 			response.status() === 461 ||
 			response.status() === 471
 		) {
-			this.logger?.warn('Official API response was restricted (status %s).', response.status());
+			this.logger?.warn(
+				'Official API response was restricted (http_status: %s).',
+				response.status(),
+			);
 			throw new SourceError(
 				'access-restricted',
 				'小红书暂时限制了此页面访问，请在官方页面处理后再试。',
@@ -358,7 +364,7 @@ export class XiaohongshuPageSource implements ContentSource {
 		}
 		stream.nextIndex += 1;
 		this.logger?.debug(
-			'Normalized %s feed page %s (%s items, has more: %s).',
+			'Normalized feed page (feed: %s, page: %s, items: %s, has_more: %s).',
 			key.startsWith('search:') ? 'search' : key,
 			stream.nextIndex,
 			normalized.items.length,

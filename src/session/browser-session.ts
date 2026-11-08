@@ -141,7 +141,11 @@ export class BrowserSession implements vscode.Disposable {
 			if (generation !== this.loginGeneration) {
 				return this.cancelledLoginSnapshot();
 			}
-			this.logger?.info('QR login %s; initial state: %s.', operation, snapshot.status);
+			this.logger?.info(
+				'QR login initialized (operation: %s, initial_state: %s).',
+				operation,
+				snapshot.status,
+			);
 			if (this.canContinueLogin(snapshot.status)) {
 				this.startLoginPolling(generation);
 			}
@@ -207,7 +211,7 @@ export class BrowserSession implements vscode.Disposable {
 			return;
 		}
 		this.logger?.info(
-			'Official session activation responded (mode: %s, HTTP status: %s).',
+			'Official session activation responded (mode: %s, http_status: %s).',
 			this.browserMode,
 			response.status(),
 		);
@@ -369,7 +373,7 @@ export class BrowserSession implements vscode.Disposable {
 			if (Date.now() >= deadline) {
 				const diagnostics = this.qrClient?.getDiagnostics();
 				this.logger?.warn(
-					'Login QR acquisition timed out (request sent: %s, response received: %s, failure: %s).',
+					'Login QR acquisition timed out (request_sent: %s, response_received: %s, failure: %s).',
 					diagnostics?.requestSent ?? false,
 					diagnostics?.responseReceived ?? false,
 					diagnostics?.failure ?? 'none',
@@ -464,7 +468,7 @@ export class BrowserSession implements vscode.Disposable {
 
 	private publishQrFailure(failure: LoginQrFailure): LoginSnapshot {
 		this.logger?.warn(
-			'Direct QR creation failed (reason: %s, HTTP status: %s).',
+			'Direct QR creation failed (reason: %s, http_status: %s).',
 			failure.reason,
 			failure.httpStatus ?? 'none',
 		);
@@ -632,11 +636,11 @@ export class BrowserSession implements vscode.Disposable {
 		} catch (error) {
 			const failure = diagnoseBrowserStartup(error, mode);
 			this.logger?.error(
-				'Chromium launch failed (platform: %s, mode: %s, category: %s, missing libraries: %s).',
+				'Chromium launch failed (platform: %s, mode: %s, category: %s, missing_libraries: %s).',
 				process.platform,
 				mode,
 				failure.category,
-				failure.missingLibraries.join(', ') || 'none detected',
+				failure.missingLibraries.join(', ') || 'none',
 			);
 			throw failure.error;
 		}
@@ -673,7 +677,7 @@ export class BrowserSession implements vscode.Disposable {
 			});
 			const { bounds } = await connection.send('Browser.getWindowBounds', { windowId });
 			this.logger?.debug(
-				'Browser window minimization requested (reported state: %s).',
+				'Browser window minimization requested (reported_state: %s).',
 				bounds.windowState,
 			);
 		} catch {

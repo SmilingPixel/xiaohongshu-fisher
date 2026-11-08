@@ -180,13 +180,13 @@ export class ContentApplicationService {
 		isLoadingMore: boolean,
 	): Promise<void> {
 		try {
-			this.logger?.debug('Loading %s feed%s.', key, isLoadingMore ? ' next page' : '');
+			this.logger?.debug('Loading feed (feed: %s, next_page: %s).', key, isLoadingMore);
 			await operation();
-			this.logger?.debug('Loaded %s feed%s.', key, isLoadingMore ? ' next page' : '');
+			this.logger?.debug('Loaded feed (feed: %s, next_page: %s).', key, isLoadingMore);
 		} catch (error) {
 			if (!controller.signal.aborted) {
 				const sourceError = toSourceError(error);
-				this.logger?.warn('Loading %s feed failed (%s).', key, sourceError.code);
+				this.logger?.warn('Feed loading failed (feed: %s, code: %s).', key, sourceError.code);
 			}
 			if (!controller.signal.aborted && this.requests.get(key) === controller) {
 				this.states[key].error = toSourceError(error);
