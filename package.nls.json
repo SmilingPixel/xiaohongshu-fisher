@@ -1,0 +1,23 @@
+{
+	"extension.description": "Browse and read Xiaohongshu notes from Visual Studio Code.",
+	"settings.browserMode.description": "Browser mode. Defaults to headless mode without a visible window. Reload the VS Code window after changing this setting.",
+	"settings.browserMode.headless": "Run without a visible browser window. Login and content browsing share the same session.",
+	"settings.browserMode.window": "Use windowed Chromium, which requires a graphical desktop. Windows may appear, move, or take focus during startup or navigation. Automatic minimization may fail and affect your experience.",
+	"commands.refreshHomeFeed": "xiaohongshu-fisher: Refresh Home",
+	"commands.refreshExploreFeed": "xiaohongshu-fisher: Refresh Explore",
+	"commands.searchNotes": "xiaohongshu-fisher: Search Xiaohongshu Notes",
+	"commands.loadMore": "xiaohongshu-fisher: Load More",
+	"commands.openNote": "xiaohongshu-fisher: Open Note",
+	"commands.openInBrowser": "xiaohongshu-fisher: Open in Browser",
+	"commands.openLogin": "xiaohongshu-fisher: Open Xiaohongshu QR Login",
+	"commands.refreshLoginQr": "xiaohongshu-fisher: Refresh Xiaohongshu Login QR Code",
+	"commands.installBrowserRuntime": "xiaohongshu-fisher: Install Playwright Chromium",
+	"commands.clearSession": "xiaohongshu-fisher: Clear Xiaohongshu Session",
+	"views.container": "Xiaohongshu",
+	"views.homeFeed": "Home",
+	"views.exploreFeed": "Explore",
+	"views.searchResults": "Search Results",
+	"welcome.homeFeed": "First time here? Scan with the Xiaohongshu app to log in.\n[Scan to Log In](command:xiaohongshu-fisher.openLogin)\nAlready have a session? [Refresh home](command:xiaohongshu-fisher.refreshHomeFeed).",
+	"welcome.exploreFeed": "First time here? Scan with the Xiaohongshu app to log in.\n[Scan to Log In](command:xiaohongshu-fisher.openLogin)\nAlready have a session? [Refresh explore](command:xiaohongshu-fisher.refreshExploreFeed).",
+	"welcome.searchResults": "First time here? Scan with the Xiaohongshu app to log in.\n[Scan to Log In](command:xiaohongshu-fisher.openLogin)\nAlready have a session? [Search notes](command:xiaohongshu-fisher.searchNotes)."
+}

@@ -41,14 +41,14 @@ export class StatusTreeProvider
 				items.unshift(this.createLoginItem());
 			}
 			if (this.state.isLoadingMore) {
-				items.push(new StatusTreeItem('正在加载下一页…', '', undefined));
+				items.push(new StatusTreeItem(vscode.l10n.t('Loading the next page…'), '', undefined));
 			}
 			if (this.state.nextCursor) {
 				items.push(
 					new StatusTreeItem(
-						'加载更多',
+						vscode.l10n.t('Load More'),
 						'',
-						{ command: `${COMMAND_PREFIX}loadMore`, title: '加载更多' },
+						{ command: `${COMMAND_PREFIX}loadMore`, title: vscode.l10n.t('Load More') },
 						'loadMore',
 					),
 				);
@@ -56,16 +56,16 @@ export class StatusTreeProvider
 			return items;
 		}
 		if (this.state.isLoading) {
-			return [new StatusTreeItem('正在加载…', '', undefined)];
+			return [new StatusTreeItem(vscode.l10n.t('Loading…'), '', undefined)];
 		}
 		if (this.state.error?.code === 'unauthenticated') {
 			return [this.createLoginItem()];
 		}
 		if (this.state.error) {
 			return [
-				new StatusTreeItem(this.state.error.message, '重试以重新加载', {
+				new StatusTreeItem(this.state.error.message, vscode.l10n.t('Retry to reload'), {
 					command: this.refreshCommand,
-					title: '重试',
+					title: vscode.l10n.t('Retry'),
 				}),
 			];
 		}
@@ -74,10 +74,14 @@ export class StatusTreeProvider
 			return [];
 		}
 		return [
-			new StatusTreeItem('尚无内容', '选择刷新或搜索开始阅读', {
-				command: this.refreshCommand,
-				title: '刷新',
-			}),
+			new StatusTreeItem(
+				vscode.l10n.t('No content yet'),
+				vscode.l10n.t('Refresh or search to start reading'),
+				{
+					command: this.refreshCommand,
+					title: vscode.l10n.t('Refresh'),
+				},
+			),
 		];
 	}
 
@@ -96,9 +100,9 @@ export class StatusTreeProvider
 
 	private createLoginItem(): StatusTreeItem {
 		const item = new StatusTreeItem(
-			'扫码登录',
-			this.state.error?.message ?? '登录后继续浏览',
-			{ command: `${COMMAND_PREFIX}openLogin`, title: '扫码登录' },
+			vscode.l10n.t('Scan to Log In'),
+			this.state.error?.message ?? vscode.l10n.t('Log in to continue browsing'),
+			{ command: `${COMMAND_PREFIX}openLogin`, title: vscode.l10n.t('Scan to Log In') },
 			'login',
 		);
 		item.iconPath = new vscode.ThemeIcon('sign-in');
@@ -114,7 +118,7 @@ export class StatusTreeProvider
 			metadata,
 			{
 				command: `${COMMAND_PREFIX}openNote`,
-				title: '打开笔记',
+				title: vscode.l10n.t('Open Note'),
 				arguments: [item],
 			},
 			'note',

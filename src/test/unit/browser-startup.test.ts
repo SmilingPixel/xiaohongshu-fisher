@@ -17,7 +17,7 @@ test('identifies the missing shared library in Chromium stderr without exposing 
 	assert.equal(failure.error.code, 'browser-dependencies');
 	assert.deepEqual(failure.missingLibraries, ['libatk-1.0.so.0']);
 	assert.match(failure.error.message, /libatk-1\.0\.so\.0/);
-	assert.match(failure.error.message, /安装 Playwright Chromium/);
+	assert.match(failure.error.message, /Install Playwright Chromium/);
 	assert.doesNotMatch(failure.error.message, /private|user-data-dir|no-sandbox/);
 	assert.equal(failure.error.retryable, false);
 });
@@ -54,8 +54,8 @@ test('reports a missing headless shell as a missing runtime', () => {
 	);
 	assert.equal(failure.category, 'runtime-missing');
 	assert.equal(failure.error.code, 'browser-missing');
-	assert.match(failure.error.message, /安装 Playwright Chromium/);
-	assert.match(failure.error.message, /无头/);
+	assert.match(failure.error.message, /Install Playwright Chromium/);
+	assert.match(failure.error.message, /headless/);
 	assert.doesNotMatch(failure.error.message, /private|1243/);
 });
 

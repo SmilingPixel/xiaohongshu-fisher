@@ -121,7 +121,7 @@ test('cancellation takes precedence over an in-flight initial note read', async 
 	context.after(() => source.dispose());
 	await assert.rejects(source.getNoteDetail('detail-fixture', undefined, controller.signal), {
 		code: 'unknown',
-		message: '请求已取消。',
+		message: 'The request was cancelled.',
 	});
 	assert.equal(isClosed(), true);
 	assert.deepEqual(events.eventNames(), []);

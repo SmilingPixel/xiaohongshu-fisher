@@ -17,7 +17,11 @@ export class NoteReader implements vscode.Disposable {
 		this.item = item;
 		const panel = this.getPanel();
 		panel.title = item.title;
-		panel.webview.html = renderReaderHtml(item.title, '<p>正在读取笔记…</p>');
+		panel.webview.html = renderReaderHtml(
+			item.title,
+			`<p>${escapeHtml(vscode.l10n.t('Reading note…'))}</p>`,
+			vscode.env.language,
+		);
 		await this.loadDetail(item);
 	}
 
@@ -33,7 +37,7 @@ export class NoteReader implements vscode.Disposable {
 		}
 		const panel = vscode.window.createWebviewPanel(
 			'xiaohongshuFisher.noteReader',
-			'小红书笔记',
+			vscode.l10n.t('Xiaohongshu Note'),
 			vscode.ViewColumn.Active,
 			{
 				enableScripts: true,
@@ -81,15 +85,23 @@ export class NoteReader implements vscode.Disposable {
 				return;
 			}
 			panel.title = detail.title;
-			panel.webview.html = renderReaderHtml(detail.title, renderNoteDetail(detail));
+			panel.webview.html = renderReaderHtml(
+				detail.title,
+				renderNoteDetail(detail, vscode.env.language),
+				vscode.env.language,
+			);
 		} catch (error) {
 			if (this.panel !== panel || this.item?.id !== item.id || version !== this.requestVersion) {
 				return;
 			}
-			const message = error instanceof SourceError ? error.message : '暂时无法读取笔记内容。';
+			const message =
+				error instanceof SourceError
+					? error.message
+					: vscode.l10n.t('Unable to read this note at the moment.');
 			panel.webview.html = renderReaderHtml(
 				item.title,
-				`<h1>${escapeHtml(item.title)}</h1><p>${escapeHtml(message)}</p><p>可以在小红书官方页面继续阅读。</p>`,
+				`<h1>${escapeHtml(item.title)}</h1><p>${escapeHtml(message)}</p><p>${escapeHtml(vscode.l10n.t('You can continue reading on the official Xiaohongshu page.'))}</p>`,
+				vscode.env.language,
 			);
 		}
 	}

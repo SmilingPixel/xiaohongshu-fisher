@@ -15,6 +15,14 @@ test('packaged files load the browser library and its CLI in isolation', async (
 	const root = path.resolve(__dirname, '../..');
 	const files = await listFiles({ cwd: root });
 	assert.ok(files.includes('out/extension.js'), 'The extension entry point must be packaged.');
+	for (const resource of [
+		'package.nls.json',
+		'package.nls.zh-cn.json',
+		'l10n/bundle.l10n.json',
+		'l10n/bundle.l10n.zh-cn.json',
+	]) {
+		assert.ok(files.includes(resource), `Missing localization resource: ${resource}`);
+	}
 	const directory = await mkdtemp(path.join(tmpdir(), 'xiaohongshu-fisher-package-'));
 	try {
 		for (const file of files) {
@@ -28,6 +36,7 @@ test('packaged files load the browser library and its CLI in isolation', async (
 			`
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+assert.equal(typeof require('@vscode/l10n').t, 'function');
 assert.equal(typeof chromium.launchPersistentContext, 'function');
 const manifest = require('./package.json');
 assert.ok(require('node:fs').existsSync(require.resolve(manifest.main)));

@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 import type { BrowserSession } from '../session/browser-session';
 import type {
 	FeedItem,
@@ -97,10 +98,13 @@ export class XiaohongshuPageSource implements ContentSource {
 		signal?: AbortSignal,
 	): Promise<PageResult<FeedItem>> {
 		if (signal?.aborted) {
-			throw new SourceError('unknown', '请求已取消。', false);
+			throw new SourceError('unknown', l10n.t('The request was cancelled.'), false);
 		}
 		if (cursor === undefined) {
-			this.logger?.debug('Opening content stream: %s.', key.startsWith('search:') ? 'search' : key);
+			this.logger?.debug(
+				'Opening content stream (feed: %s).',
+				key.startsWith('search:') ? 'search' : key,
+			);
 			await this.closeStream(key);
 			const page = await this.session.openPage();
 			const stream: Stream = { page, nextIndex: 0, closed: false };
@@ -118,7 +122,11 @@ export class XiaohongshuPageSource implements ContentSource {
 
 		const stream = this.streams.get(key);
 		if (!stream || stream.closed || cursor !== String(stream.nextIndex)) {
-			throw new SourceError('parse-failure', '当前页面分页状态已失效，请刷新列表。', false);
+			throw new SourceError(
+				'parse-failure',
+				l10n.t('The page pagination state has expired. Please refresh the list.'),
+				false,
+			);
 		}
 		try {
 			const payload = await this.captureAfterScroll(stream.page, path, signal);
@@ -137,7 +145,7 @@ export class XiaohongshuPageSource implements ContentSource {
 		readInitial?: () => Promise<unknown | undefined>,
 	): Promise<unknown> {
 		if (signal?.aborted) {
-			throw new SourceError('unknown', '请求已取消。', false);
+			throw new SourceError('unknown', l10n.t('The request was cancelled.'), false);
 		}
 		const capture = new AbortController();
 		const captureSignal = signal ? AbortSignal.any([signal, capture.signal]) : capture.signal;
@@ -169,12 +177,16 @@ export class XiaohongshuPageSource implements ContentSource {
 			return await Promise.race([apiPayload, initialPayload]);
 		} catch (error) {
 			if (signal?.aborted) {
-				throw new SourceError('unknown', '请求已取消。', false);
+				throw new SourceError('unknown', l10n.t('The request was cancelled.'), false);
 			}
 			if (error instanceof SourceError) {
 				throw error;
 			}
-			throw new SourceError('network', '无法从当前页面读取内容，请检查网络或登录状态。', true);
+			throw new SourceError(
+				'network',
+				l10n.t('Unable to read the page content. Check your network or login status.'),
+				true,
+			);
 		} finally {
 			// In particular, an initial-state success must remove the unused API
 			// listener and timer instead of leaving a late timeout behind.
@@ -224,12 +236,16 @@ export class XiaohongshuPageSource implements ContentSource {
 			return await this.readResponse(response);
 		} catch (error) {
 			if (signal?.aborted) {
-				throw new SourceError('unknown', '请求已取消。', false);
+				throw new SourceError('unknown', l10n.t('The request was cancelled.'), false);
 			}
 			if (error instanceof SourceError) {
 				throw error;
 			}
-			throw new SourceError('network', '页面没有返回下一页内容，请稍后重试。', true);
+			throw new SourceError(
+				'network',
+				l10n.t('The page did not return the next page of content. Please try again later.'),
+				true,
+			);
 		} finally {
 			capture.abort();
 			page.off('request', onRequest);
@@ -280,15 +296,24 @@ export class XiaohongshuPageSource implements ContentSource {
 					finish(new SourceError(officialPageErrorSourceCode(error), error.message, false));
 				}
 			};
-			const onAbort = (): void => finish(new SourceError('unknown', '请求已取消。', false));
+			const onAbort = (): void =>
+				finish(new SourceError('unknown', l10n.t('The request was cancelled.'), false));
 			const onClose = (): void =>
-				finish(new SourceError('network', '内容页面已关闭，无法继续读取。', true));
+				finish(
+					new SourceError(
+						'network',
+						l10n.t('The content page has closed and can no longer be read.'),
+						true,
+					),
+				);
 			const timeout = setTimeout(
 				() =>
 					finish(
 						new SourceError(
 							'network',
-							'页面没有在规定时间内返回内容，请检查网络或登录状态。',
+							l10n.t(
+								'The page did not return content in time. Check your network or login status.',
+							),
 							true,
 						),
 					),
@@ -306,7 +331,11 @@ export class XiaohongshuPageSource implements ContentSource {
 
 	private async readResponse(response: Response): Promise<unknown> {
 		if (!this.isAllowedHost(new URL(response.url()).hostname)) {
-			throw new SourceError('access-restricted', '页面返回了非官方域名的数据。', false);
+			throw new SourceError(
+				'access-restricted',
+				l10n.t('The page returned data from an unofficial domain.'),
+				false,
+			);
 		}
 		if (
 			response.status() === 401 ||
@@ -315,16 +344,25 @@ export class XiaohongshuPageSource implements ContentSource {
 			response.status() === 461 ||
 			response.status() === 471
 		) {
-			this.logger?.warn('Official API response was restricted (status %s).', response.status());
+			this.logger?.warn(
+				'Official API response was restricted (http_status: %s).',
+				response.status(),
+			);
 			throw new SourceError(
 				'access-restricted',
-				'小红书暂时限制了此页面访问，请在官方页面处理后再试。',
+				l10n.t(
+					'Xiaohongshu has restricted access to this page. Follow the official page instructions before retrying.',
+				),
 				false,
 			);
 		}
 		const contentLength = Number(response.headers()['content-length'] ?? 0);
 		if (contentLength > RESPONSE_LIMIT) {
-			throw new SourceError('parse-failure', '页面响应超过允许的读取大小。', false);
+			throw new SourceError(
+				'parse-failure',
+				l10n.t('The page response exceeds the allowed size.'),
+				false,
+			);
 		}
 		try {
 			const payload: unknown = await response.json();
@@ -332,7 +370,9 @@ export class XiaohongshuPageSource implements ContentSource {
 			if (root?.success === false || (root?.code !== undefined && String(root.code) !== '0')) {
 				throw new SourceError(
 					'access-restricted',
-					'小红书未提供此页面内容，请检查登录状态或稍后再试。',
+					l10n.t(
+						'Xiaohongshu did not provide this page content. Check your login status or try again later.',
+					),
 					false,
 				);
 			}
@@ -341,7 +381,11 @@ export class XiaohongshuPageSource implements ContentSource {
 			if (error instanceof SourceError) {
 				throw error;
 			}
-			throw new SourceError('parse-failure', '页面响应格式暂时无法读取。', false);
+			throw new SourceError(
+				'parse-failure',
+				l10n.t('The page response format cannot be read at the moment.'),
+				false,
+			);
 		}
 	}
 
@@ -358,7 +402,7 @@ export class XiaohongshuPageSource implements ContentSource {
 		}
 		stream.nextIndex += 1;
 		this.logger?.debug(
-			'Normalized %s feed page %s (%s items, has more: %s).',
+			'Normalized feed page (feed: %s, page: %s, items: %s, has_more: %s).',
 			key.startsWith('search:') ? 'search' : key,
 			stream.nextIndex,
 			normalized.items.length,

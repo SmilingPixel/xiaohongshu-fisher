@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 export type SourceErrorCode =
 	| 'invalid-query'
 	| 'unauthenticated'
@@ -27,7 +28,11 @@ export function toSourceError(error: unknown): SourceError {
 		return error;
 	}
 	if (error instanceof Error && error.name === 'AbortError') {
-		return new SourceError('unknown', '请求已取消。', false);
+		return new SourceError('unknown', l10n.t('The request was cancelled.'), false);
 	}
-	return new SourceError('unknown', '暂时无法加载内容，请稍后重试。', true);
+	return new SourceError(
+		'unknown',
+		l10n.t('Unable to load content. Please try again later.'),
+		true,
+	);
 }

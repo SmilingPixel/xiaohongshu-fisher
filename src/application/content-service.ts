@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 import type { FeedItem, NoteDetail, NoteSourceContext, PageResult } from '../models/content';
 import { SourceError, toSourceError } from '../models/source-error';
 import type { ContentSource } from '../sources/content-source';
@@ -72,7 +73,9 @@ export class ContentApplicationService {
 	searchNotes(query: string): Promise<void> {
 		const normalizedQuery = query.trim();
 		if (!normalizedQuery) {
-			return Promise.reject(new SourceError('invalid-query', '请输入搜索关键词。', false));
+			return Promise.reject(
+				new SourceError('invalid-query', l10n.t('Enter a search keyword.'), false),
+			);
 		}
 
 		this.cancel('search');
@@ -180,13 +183,13 @@ export class ContentApplicationService {
 		isLoadingMore: boolean,
 	): Promise<void> {
 		try {
-			this.logger?.debug('Loading %s feed%s.', key, isLoadingMore ? ' next page' : '');
+			this.logger?.debug('Loading feed (feed: %s, next_page: %s).', key, isLoadingMore);
 			await operation();
-			this.logger?.debug('Loaded %s feed%s.', key, isLoadingMore ? ' next page' : '');
+			this.logger?.debug('Loaded feed (feed: %s, next_page: %s).', key, isLoadingMore);
 		} catch (error) {
 			if (!controller.signal.aborted) {
 				const sourceError = toSourceError(error);
-				this.logger?.warn('Loading %s feed failed (%s).', key, sourceError.code);
+				this.logger?.warn('Feed loading failed (feed: %s, code: %s).', key, sourceError.code);
 			}
 			if (!controller.signal.aborted && this.requests.get(key) === controller) {
 				this.states[key].error = toSourceError(error);
@@ -214,7 +217,7 @@ export class ContentApplicationService {
 		}
 		const query = this.states.search.query;
 		if (!query) {
-			throw new SourceError('invalid-query', '请输入搜索关键词。', false);
+			throw new SourceError('invalid-query', l10n.t('Enter a search keyword.'), false);
 		}
 		return (cursor, signal) => this.source.searchNotes(query, cursor, signal);
 	}

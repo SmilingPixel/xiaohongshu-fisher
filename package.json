@@ -2,7 +2,7 @@
 	"name": "xiaohongshu-fisher",
 	"publisher": "SmilingPixel",
 	"displayName": "Xiaohongshu Fisher",
-	"description": "Browse and read Xiaohongshu notes from Visual Studio Code.",
+	"description": "%extension.description%",
 	"version": "0.0.1",
 	"repository": {
 		"type": "git",
@@ -31,62 +31,62 @@
 						"window"
 					],
 					"enumDescriptions": [
-						"不显示浏览器窗口。登录和内容浏览共用同一会话。",
-						"使用普通 Chromium，需要图形桌面。启动或打开页面时可能出现窗口弹出、跳动或焦点切换；自动最小化也可能失败，影响使用体验。"
+						"%settings.browserMode.headless%",
+						"%settings.browserMode.window%"
 					],
 					"default": "headless",
 					"scope": "machine",
-					"description": "浏览器运行模式，默认使用不显示窗口的 headless 模式。更改后请重新加载 VS Code 窗口。"
+					"description": "%settings.browserMode.description%"
 				}
 			}
 		},
 		"commands": [
 			{
 				"command": "xiaohongshu-fisher.refreshHomeFeed",
-				"title": "xiaohongshu-fisher: 刷新推荐",
+				"title": "%commands.refreshHomeFeed%",
 				"icon": "$(refresh)"
 			},
 			{
 				"command": "xiaohongshu-fisher.refreshExploreFeed",
-				"title": "xiaohongshu-fisher: 刷新发现",
+				"title": "%commands.refreshExploreFeed%",
 				"icon": "$(refresh)"
 			},
 			{
 				"command": "xiaohongshu-fisher.searchNotes",
-				"title": "xiaohongshu-fisher: 搜索小红书笔记",
+				"title": "%commands.searchNotes%",
 				"icon": "$(search)"
 			},
 			{
 				"command": "xiaohongshu-fisher.loadMore",
-				"title": "xiaohongshu-fisher: 加载更多",
+				"title": "%commands.loadMore%",
 				"icon": "$(more)"
 			},
 			{
 				"command": "xiaohongshu-fisher.openNote",
-				"title": "xiaohongshu-fisher: 打开笔记"
+				"title": "%commands.openNote%"
 			},
 			{
 				"command": "xiaohongshu-fisher.openInBrowser",
-				"title": "xiaohongshu-fisher: 在浏览器中打开",
+				"title": "%commands.openInBrowser%",
 				"icon": "$(link-external)"
 			},
 			{
 				"command": "xiaohongshu-fisher.openLogin",
-				"title": "xiaohongshu-fisher: 打开小红书扫码登录",
+				"title": "%commands.openLogin%",
 				"icon": "$(sign-in)"
 			},
 			{
 				"command": "xiaohongshu-fisher.refreshLoginQr",
-				"title": "xiaohongshu-fisher: 刷新小红书登录二维码"
+				"title": "%commands.refreshLoginQr%"
 			},
 			{
 				"command": "xiaohongshu-fisher.installBrowserRuntime",
-				"title": "xiaohongshu-fisher: 安装 Playwright Chromium",
+				"title": "%commands.installBrowserRuntime%",
 				"icon": "$(cloud-download)"
 			},
 			{
 				"command": "xiaohongshu-fisher.clearSession",
-				"title": "xiaohongshu-fisher: 清除小红书会话",
+				"title": "%commands.clearSession%",
 				"icon": "$(trash)"
 			}
 		],
@@ -94,7 +94,7 @@
 			"activitybar": [
 				{
 					"id": "xiaohongshuFisher",
-					"title": "小红书",
+					"title": "%views.container%",
 					"icon": "resources/xiaohongshu.svg"
 				}
 			]
@@ -103,15 +103,15 @@
 			"xiaohongshuFisher": [
 				{
 					"id": "xiaohongshuFisher.homeFeed",
-					"name": "推荐"
+					"name": "%views.homeFeed%"
 				},
 				{
 					"id": "xiaohongshuFisher.exploreFeed",
-					"name": "发现"
+					"name": "%views.exploreFeed%"
 				},
 				{
 					"id": "xiaohongshuFisher.searchResults",
-					"name": "搜索结果"
+					"name": "%views.searchResults%"
 				}
 			]
 		},
@@ -152,15 +152,15 @@
 		"viewsWelcome": [
 			{
 				"view": "xiaohongshuFisher.homeFeed",
-				"contents": "首次使用？先用小红书 App 扫码登录。\n[扫码登录](command:xiaohongshu-fisher.openLogin)\n已有会话？[直接刷新推荐](command:xiaohongshu-fisher.refreshHomeFeed)。"
+				"contents": "%welcome.homeFeed%"
 			},
 			{
 				"view": "xiaohongshuFisher.exploreFeed",
-				"contents": "首次使用？先用小红书 App 扫码登录。\n[扫码登录](command:xiaohongshu-fisher.openLogin)\n已有会话？[直接刷新发现](command:xiaohongshu-fisher.refreshExploreFeed)。"
+				"contents": "%welcome.exploreFeed%"
 			},
 			{
 				"view": "xiaohongshuFisher.searchResults",
-				"contents": "首次使用？先用小红书 App 扫码登录。\n[扫码登录](command:xiaohongshu-fisher.openLogin)\n已有会话？[直接搜索笔记](command:xiaohongshu-fisher.searchNotes)。"
+				"contents": "%welcome.searchResults%"
 			}
 		]
 	},
@@ -170,13 +170,15 @@
 		"watch": "tsc -watch -p ./",
 		"package": "vsce package",
 		"pretest": "pnpm run compile && pnpm run lint",
-		"lint": "eslint . --max-warnings 0 && pnpm run format:check",
+		"lint": "eslint . --max-warnings 0 && pnpm run format:check && pnpm run l10n:check",
 		"lint:fix": "eslint . --fix --max-warnings 0 && pnpm run format",
-		"format": "prettier --write src \"*.{json,mjs}\" .vscode",
-		"format:check": "prettier --check src \"*.{json,mjs}\" .vscode",
+		"format": "prettier --write src \"*.{json,mjs}\" .vscode \"l10n/*.json\"",
+		"format:check": "prettier --check src \"*.{json,mjs}\" .vscode \"l10n/*.json\"",
 		"test": "pnpm run test:unit && vscode-test",
 		"test:unit": "node --test out/test/unit/*.test.js",
-		"test:package": "node --test out/test/packaging.test.js"
+		"test:package": "node --test out/test/packaging.test.js",
+		"l10n:export": "vscode-l10n-dev export -o l10n src",
+		"l10n:check": "node --test l10n-check.mjs"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -184,6 +186,7 @@
 		"@types/node": "24.x",
 		"@types/qrcode": "^1.5.6",
 		"@types/vscode": "^1.140.0",
+		"@vscode/l10n-dev": "^0.0.35",
 		"@vscode/test-cli": "^0.0.15",
 		"@vscode/test-electron": "^3.0.0",
 		"@vscode/vsce": "^4.0.0",
@@ -198,7 +201,9 @@
 		"serialize-javascript": "^7.0.6"
 	},
 	"dependencies": {
+		"@vscode/l10n": "^0.0.18",
 		"playwright": "^1.63.0",
 		"qrcode": "^1.5.4"
-	}
+	},
+	"l10n": "./l10n"
 }

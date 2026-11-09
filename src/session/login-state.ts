@@ -1,3 +1,4 @@
+import * as l10n from '@vscode/l10n';
 import { classifyOfficialErrorRedirect } from '../sources/official-page-error';
 import type { LoginStatus } from './login-model';
 export type { LoginStatus } from './login-model';
@@ -35,7 +36,9 @@ export function detectLoginState(input: LoginDetectionInput): LoginDetection {
 	if (input.url && !input.url.startsWith('about:blank') && !input.url.startsWith('https://')) {
 		return {
 			status: 'page-error',
-			message: '登录页跳转到了不受支持的地址，已停止读取。请检查官方页面后重新打开登录。',
+			message: l10n.t(
+				'The login page redirected to an unsupported address. Reading has stopped. Check the official page and reopen login.',
+			),
 		};
 	}
 	const officialError = classifyOfficialErrorRedirect(input.url);
@@ -48,31 +51,41 @@ export function detectLoginState(input: LoginDetectionInput): LoginDetection {
 	if (VERIFICATION_TEXT.test(text)) {
 		return {
 			status: 'verification-required',
-			message:
-				'小红书要求人工完成安全验证，已暂停登录。扩展仅支持扫码登录，无法处理扫码以外的验证，请稍后重新尝试登录。',
+			message: l10n.t(
+				'Xiaohongshu requires manual security verification. Login has paused. This extension only supports QR login and cannot handle other verification. Please retry login later.',
+			),
 		};
 	}
 	if (input.authenticated) {
-		return { status: 'logged-in', message: '已登录，可以返回列表刷新内容。' };
+		return {
+			status: 'logged-in',
+			message: l10n.t('Logged in. Return to the list and refresh the content.'),
+		};
 	}
 	if (
 		input.officialExpired ||
 		(input.expiresAt > 0 && input.now >= input.expiresAt) ||
 		EXPIRED_TEXT.test(text)
 	) {
-		return { status: 'expired', message: '二维码已过期，请刷新二维码后重试。' };
+		return {
+			status: 'expired',
+			message: l10n.t('The QR code has expired. Refresh it and try again.'),
+		};
 	}
 	if (input.hasQr) {
-		return { status: 'waiting-scan', message: '请使用小红书手机客户端扫描二维码并确认登录。' };
+		return {
+			status: 'waiting-scan',
+			message: l10n.t('Scan the QR code with the Xiaohongshu mobile app and confirm login.'),
+		};
 	}
 	if (/扫码登录|登录|手机号|密码/.test(text)) {
-		return { status: 'loading', message: '正在等待官方登录二维码…' };
+		return { status: 'loading', message: l10n.t('Waiting for the official login QR code…') };
 	}
 	return {
 		status: 'loading',
 		message:
 			input.url && !input.url.startsWith('about:blank')
-				? '正在读取官方登录页面…'
-				: '正在打开官方登录页面…',
+				? l10n.t('Reading the official login page…')
+				: l10n.t('Opening the official login page…'),
 	};
 }
