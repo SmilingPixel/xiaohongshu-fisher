@@ -1,57 +1,59 @@
 # Xiaohongshu Fisher
 
-在 VS Code 中浏览和阅读小红书笔记。当前版本提供推荐、发现、搜索结果视图，以及笔记阅读页和系统浏览器入口。
+English | [简体中文](./README.zh-CN.md)
 
-## 账号风险提醒
+Browse and read Xiaohongshu notes in VS Code. The current version provides Home, Explore, and Search Results views, an integrated note reader, and links to open notes in your system browser.
 
-**真实账号调试期间已收到小红书风控提醒，具体原因尚未确认。** 使用本扩展可能导致验证、访问限制或封禁，无法保证账号安全。请用户和开发者谨慎使用，避免使用主账号及频繁登录、刷新；收到提醒后立即停止操作，按官方指引处理，不要反复重试或规避限制。
+## Account risk warning
 
-## 使用
+**Xiaohongshu issued a risk-control warning during debugging with a real account. The exact cause has not been confirmed.** Using this extension may trigger verification, access restrictions, or account suspension; account safety cannot be guaranteed. Users and developers should proceed carefully, avoid using their primary accounts, and avoid frequent logins or refreshes. If you receive a warning, stop immediately and follow the official instructions. Do not repeatedly retry or attempt to bypass restrictions.
 
-1. 在 Activity Bar 打开“小红书”。
-2. 首次使用时，点击侧栏欢迎页中的“扫码登录”，也可使用任一视图标题栏的登录图标。登录页打开后会自动获取并显示二维码，直接使用小红书 App 扫码确认，无需另开图片编辑器。扩展默认在后台启动独立的无头 Chromium。
-3. 返回 VS Code，在“推荐”或“发现”视图标题栏选择刷新；在“搜索结果”视图运行“xiaohongshu-fisher: 搜索小红书笔记”。
-4. 选择笔记打开内置阅读页。阅读页也提供“在浏览器中打开”入口。
+## Usage
 
-若缺少 Playwright Chromium，运行命令面板中的“安装 Playwright Chromium”。该命令会在 VS Code 终端中启动安装流程；Linux 下同时安装系统依赖，可能需要 sudo 权限，不会在扩展激活时静默下载浏览器。安装完成后重新打开登录页或刷新列表。
+1. Open **Xiaohongshu** in the Activity Bar.
+2. On first use, select **Scan to Log In** on the sidebar welcome page, or use the login icon in any view's title bar. The login page automatically fetches and displays a QR code. Scan it with the Xiaohongshu app and confirm the login; no separate image editor is needed. By default, the extension starts a dedicated headless Chromium instance in the background.
+3. Return to VS Code and select Refresh in the **Home** or **Explore** view's title bar. To search, run **xiaohongshu-fisher: Search Xiaohongshu Notes** from the **Search Results** view.
+4. Select a note to open the integrated reader. The reader also offers **Open in Browser**.
 
-二维码过期后，点击登录页中的“刷新二维码”，新二维码会在原位置自动显示。登录成功、过期、出错或关闭页面后会清除二维码；重复点击登录入口会回到当前登录页。列表提示登录失效时，可直接点击列表中的“扫码登录”。已有会话的用户可以从欢迎页直接刷新或搜索。
+If Playwright Chromium is missing, run **Install Playwright Chromium** from the Command Palette. This command starts installation in a VS Code terminal. On Linux, it also installs system dependencies and may require sudo privileges. The extension does not silently download a browser during activation. After installation, reopen the login page or refresh a list.
 
-登录页监听页面创建二维码的响应，在扩展宿主中把经过校验的登录 URL 编码为 PNG，通过受限的内存图片资源在登录页显示。WebView 消息只传递显示状态和临时图片地址，不传递二维码字节、Cookie 或原始登录参数；二维码不会写入工作区。
+When a QR code expires, select **Refresh QR Code** on the login page to display a new code in the same place. The code is cleared after a successful login, expiration, an error, or closing the page. Opening login again returns to the existing login page. If a list reports that your session has expired, select **Scan to Log In** directly in that list. Users with an existing session can refresh or search from the welcome page.
 
-使用 Remote SSH 或容器时，请检查运行扩展的远程主机或容器所使用的网络；本地电脑的网络可能与其不同。若官方页面提示当前网络存在 IP 风险，扩展会停止本次操作并等待手动重试，不会自动绕过平台限制。
+The login assistant listens for the official page's QR creation response. The extension host validates the login URL, encodes it as a PNG, and displays it through a restricted in-memory image resource. WebView messages carry only display state and a temporary image address, never QR image bytes, cookies, or raw login parameters. QR codes are not written to the workspace.
 
-## 数据与隐私
+When using Remote SSH or a container, check the network used by the remote host or container running the extension; it may differ from your local computer's network. If the official page reports an IP risk on the current network, the extension stops the operation and waits for a manual retry. It does not automatically bypass platform restrictions.
 
-- 登录只在小红书官方网页中由用户自行完成；扩展不收集账号密码或验证码。
-- 登录会话保存在 VS Code 扩展全局存储目录下的独立浏览器 profile，不读取系统默认浏览器数据，也不写入工作区设置。
-- 使用“xiaohongshu-fisher: 清除小红书会话”关闭浏览器并删除插件保存的 profile。卸载扩展前建议先运行此命令。
-- 笔记正文只用于当前阅读页，不保存到工作区或持久缓存。扩展只执行用户触发的只读浏览、搜索和详情读取。
-- 页面内容来自小红书网页，网页结构和可读栏目可能变化。遇到登录验证、访问限制或解析失败时，请查看官方提示并稍后手动重试；扩展不会自动处理验证或规避访问限制。
+## Data and privacy
 
-## 运行要求与限制
+- You complete login yourself on Xiaohongshu's official website. The extension does not collect passwords or verification codes.
+- Login sessions are stored in a dedicated browser profile under the extension's VS Code global storage directory. The extension does not read your default browser's data or write session data to workspace settings.
+- Run **xiaohongshu-fisher: Clear Xiaohongshu Session** to close the browser and delete the extension's saved profile. Running this command before uninstalling the extension is recommended.
+- Note bodies are used only in the current reader and are not saved to the workspace or a persistent cache. The extension performs only user-triggered, read-only browsing, searching, and note retrieval.
+- Content comes from Xiaohongshu web pages, whose structure and available sections may change. If login verification, access restrictions, or parsing failures occur, check the official message and retry manually later. The extension does not automatically handle verification or bypass access restrictions.
 
-- 需要桌面版 VS Code 和 Playwright Chromium，支持 VS Code Remote SSH 和容器；不同服务器的 Chromium 系统依赖仍需单独安装和验证。
-- 本版本尚未完成真实小红书账号下的端到端验证。推荐、发现、搜索和详情能否读取取决于当前网页行为、登录状态和账号可见内容。
-- “发现”视图的网页数据映射仍需真实浏览器验证；若平台页面返回的数据结构变化，相关栏目可能暂不可用。
-- 本扩展为社区工具，不代表小红书官方产品。请遵守平台规则并自行判断使用方式。
+## Requirements and limitations
 
-## 命令
+- Desktop VS Code and Playwright Chromium are required. VS Code Remote SSH and containers are supported, but Chromium system dependencies must be installed and verified separately on each host.
+- End-to-end validation with a real Xiaohongshu account has not been completed for this version. Access to Home, Explore, search, and note details depends on current website behavior, login state, and the content visible to your account.
+- The mapping of website data to the Explore view still requires verification in a real browser. Changes to the platform's response structure may temporarily make some sections unavailable.
+- This extension is a community tool and is not an official Xiaohongshu product. Follow the platform's rules and use your own judgment when deciding how to use it.
 
-| 命令 | 作用 |
-| --- | --- |
-| xiaohongshu-fisher: 刷新推荐 | 重新读取推荐列表 |
-| xiaohongshu-fisher: 刷新发现 | 重新读取发现列表 |
-| xiaohongshu-fisher: 搜索小红书笔记 | 输入关键词搜索 |
-| xiaohongshu-fisher: 加载更多 | 继续读取当前列表 |
-| xiaohongshu-fisher: 打开小红书扫码登录 | 在 VS Code 登录辅助页启动无头扫码流程 |
-| xiaohongshu-fisher: 刷新小红书登录二维码 | 在登录辅助页请求新的官方二维码 |
-| xiaohongshu-fisher: 安装 Playwright Chromium | 在终端安装浏览器运行时，Linux 下同时安装系统依赖 |
-| xiaohongshu-fisher: 清除小红书会话 | 删除插件专属浏览器 profile |
+## Commands
 
-## 开发
+| Command                                               | Purpose                                                                           |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| xiaohongshu-fisher: Refresh Home                      | Reload the Home feed                                                              |
+| xiaohongshu-fisher: Refresh Explore                   | Reload the Explore feed                                                           |
+| xiaohongshu-fisher: Search Xiaohongshu Notes          | Enter keywords to search for notes                                                |
+| xiaohongshu-fisher: Load More                         | Fetch more items for the current list                                             |
+| xiaohongshu-fisher: Open Xiaohongshu QR Login         | Start headless QR login in the VS Code login assistant                            |
+| xiaohongshu-fisher: Refresh Xiaohongshu Login QR Code | Request a new official QR code in the login assistant                             |
+| xiaohongshu-fisher: Install Playwright Chromium       | Install the browser runtime in a terminal, including system dependencies on Linux |
+| xiaohongshu-fisher: Clear Xiaohongshu Session         | Delete the extension's dedicated browser profile                                  |
 
-开发调试请遵守[账号风险提醒](#账号风险提醒)，优先使用模拟数据，不将真实登录会话用于自动化测试或 CI。
+## Development
+
+Follow the [account risk warning](#account-risk-warning) when developing or debugging. Prefer mock data, and do not use real login sessions in automated tests or CI.
 
 ```sh
 pnpm install
@@ -60,17 +62,17 @@ pnpm run lint
 pnpm run test:unit
 ```
 
-完整 `pnpm test` 还需要可启动 VS Code Electron 的图形环境。
+The full `pnpm test` command also requires a graphical environment capable of launching VS Code Electron.
 
-项目使用 **ESLint** 检查代码质量和可读性，使用 **Prettier** 统一格式。`pnpm run lint` 会执行两项检查，出现警告也会失败。
+The project uses **ESLint** for code quality and readability and **Prettier** for consistent formatting. `pnpm run lint` runs both checks and fails on warnings.
 
-使用 `pnpm run format` 格式化源码及工具、编辑器配置；使用 `pnpm run lint:fix` 自动修复可处理的问题并格式化。`pnpm run format:check` 只检查格式，不修改文件。
+Use `pnpm run format` to format source files and tool and editor configuration. Use `pnpm run lint:fix` to apply available automatic fixes and format files. `pnpm run format:check` checks formatting without changing files.
 
-工作区推荐安装 ESLint 和 Prettier 扩展，并已为 TypeScript、JavaScript 和 JSON 启用保存时格式化。代码风格及注释要求见 [AGENTS.md](./AGENTS.md#code-style-and-readability)。
+The workspace recommends the ESLint and Prettier extensions and enables format on save for TypeScript, JavaScript, and JSON. See [AGENTS.md](./AGENTS.md#code-style-and-readability) for code style and comment requirements.
 
-## 打包与安装 VSIX
+## Packaging and installing a VSIX
 
-通过 pnpm 使用仓库中已锁定版本的 `vsce` 工具打包。更新仓库后，即使之前已经安装过依赖，也请重新运行 `pnpm install`，使本地依赖布局与仓库配置保持一致。
+Use pnpm to package the extension with the version of `vsce` locked in this repository. After updating the repository, run `pnpm install` again even if dependencies were previously installed, so that the local dependency layout matches the repository configuration.
 
 ```sh
 pnpm install
@@ -80,32 +82,36 @@ pnpm run test:unit
 pnpm run package
 ```
 
-打包时会自动编译扩展并运行 `test:package`，在仓库外的临时目录中验证待打包的 Playwright 文件能否独立加载。由于 `vsce` 收集依赖时无法保留 pnpm 默认布局中的符号链接关系，仓库通过 `pnpm-workspace.yaml` 的 `nodeLinker: hoisted` 配置使用平铺依赖布局。VSIX 解压后必须能够正常找到 `playwright` 和 `playwright-core`，因此不要使用 `--no-dependencies` 打包。
+Packaging automatically compiles the extension and runs `test:package`, which verifies that the Playwright files selected for packaging can load independently in a temporary directory outside the repository. Because `vsce` cannot preserve symlink relationships from pnpm's default dependency layout, this repository uses a flat layout through `nodeLinker: hoisted` in `pnpm-workspace.yaml`. The extracted VSIX must be able to resolve `playwright` and `playwright-core`, so do not package with `--no-dependencies`.
 
-打包成功后，仓库根目录会生成 `xiaohongshu-fisher-0.0.1.vsix`。可以在 VS Code 扩展视图中选择“从 VSIX 安装…”，或使用以下命令覆盖安装旧版本：
+After successful packaging, `xiaohongshu-fisher-0.0.1.vsix` is created in the repository root. Choose **Install from VSIX…** in the VS Code Extensions view, or use the following command to replace an older installation:
 
 ```sh
 code --install-extension xiaohongshu-fisher-0.0.1.vsix --force
 ```
 
-覆盖安装后，请重新加载 VS Code 窗口。发布相关命令和完整要求请参考[扩展发布文档](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)。
+Reload the VS Code window after replacing the installation. See the [extension publishing documentation](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) for publishing commands and full requirements.
 
-## 扩展激活故障排查
+## Troubleshooting extension activation
 
-若安装 VSIX 后出现 `command 'xiaohongshu-fisher.refreshHomeFeed' not found`，请在“输出 → Log (Extension Host)”查看激活错误。若提示找不到 `playwright` 或 `playwright-core`，请按上面的步骤重新安装依赖、打包、覆盖安装 VSIX 并重新加载窗口。扩展在激活前加载这些模块；缺少模块时，所有命令都无法注册，安装 Chromium 不能修复这个问题。
+If installing the VSIX results in `command 'xiaohongshu-fisher.refreshHomeFeed' not found`, check **Output → Log (Extension Host)** for activation errors. If `playwright` or `playwright-core` cannot be found, reinstall dependencies, package the extension, replace the installed VSIX, and reload the window as described above. These modules are loaded before activation; if they are missing, no commands can be registered. Installing Chromium does not fix this issue.
 
-## 浏览器故障排查
+## Troubleshooting the browser
 
-若出现“无法启动无头 Chromium”，可在“输出”面板选择 **Xiaohongshu Fisher**，查看平台、错误类别和缺少的动态库名称。
+If headless Chromium cannot start, select **Xiaohongshu Fisher** in the Output panel to inspect the platform, error category, and names of missing shared libraries.
 
-- **缺少系统依赖**（如 `libatk-1.0.so.0`）：运行命令面板中的“安装 Playwright Chromium”。在本仓库开发时，也可在仓库目录执行 `pnpm exec playwright install-deps chromium`，只安装系统依赖。
-- **缺少浏览器运行时**：运行“安装 Playwright Chromium”，安装扩展使用的 Chromium headless shell。
-- **沙箱、目录权限或会话占用**：根据具体错误检查主机或容器权限，或关闭占用同一会话的浏览器/VS Code 窗口后重试。
+- **Missing system dependencies** (such as `libatk-1.0.so.0`): run **Install Playwright Chromium** from the Command Palette. When developing in this repository, you can also run `pnpm exec playwright install-deps chromium` from the repository directory to install only system dependencies.
+- **Missing browser runtime**: run **Install Playwright Chromium** to install the Chromium headless shell used by the extension.
+- **Sandbox, directory permissions, or session conflicts**: check host or container permissions based on the error, or close browser or VS Code windows using the same session before retrying.
 
-Remote SSH、Dev Container 等场景需要在**运行扩展的远程主机或容器内**安装依赖；在本地电脑安装不会修复远程启动失败。Linux 系统依赖通过系统包管理器安装；没有 sudo 权限时，请让管理员安装或将依赖加入容器镜像。
+For Remote SSH and Dev Containers, install dependencies **on the remote host or inside the container running the extension**. Installing them on your local computer will not fix remote startup failures. Linux system dependencies are installed through the system package manager. If you do not have sudo privileges, ask an administrator to install them or include them in the container image.
 
-## 界面语言
+## Interface language
 
-扩展支持简体中文和英文，自动跟随 VS Code 的显示语言。使用 VS Code 的“配置显示语言 / Configure Display Language”命令切换语言，并按提示重启。其他未支持的语言及缺失翻译回退到英文；扩展不提供独立语言设置。
+The extension supports English and Simplified Chinese and follows the VS Code display language automatically. Run **Configure Display Language** in VS Code to switch languages, then restart when prompted. Unsupported languages and missing translations fall back to English. The extension does not provide a separate language setting.
 
-命令、设置、侧栏、扫码登录和阅读页的操作界面参与翻译，小红书笔记、昵称及官方页面内容保留原文。输出通道 `Xiaohongshu Fisher` 的诊断日志始终使用英文。
+Commands, settings, sidebar views, QR login controls, and reader controls are localized. Xiaohongshu notes, nicknames, and official page content remain in their original language. Diagnostic logs in the `Xiaohongshu Fisher` output channel are always in English.
+
+## License
+
+This project is licensed under the [Apache License 2.0](./LICENSE).
