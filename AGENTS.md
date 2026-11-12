@@ -19,7 +19,7 @@
 
 ## Documentation
 
-- Write `README.md` in Chinese. Write code, identifiers, comments, diagnostics, and other developer documentation in English; product text may be localized.
+- Keep `README.md` in English and `README.zh-CN.md` in Simplified Chinese, with matching content and language links. Write code, identifiers, comments, diagnostics, and other developer documentation in English; product text may be localized.
 - Update comments and documentation when behavior changes; keep explanations concise and accurate.
 
 ## Extension Architecture
