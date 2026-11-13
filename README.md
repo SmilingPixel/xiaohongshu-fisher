@@ -15,7 +15,7 @@ Browse and read Xiaohongshu notes in VS Code. The current version provides Home,
 3. Return to VS Code and select Refresh in the **Home** or **Explore** view's title bar. To search, run **xiaohongshu-fisher: Search Xiaohongshu Notes** from the **Search Results** view.
 4. Select a note to open the integrated reader. The reader also offers **Open in Browser**.
 
-If Playwright Chromium is missing, run **Install Playwright Chromium** from the Command Palette. This command starts installation in a VS Code terminal. On Linux, it also installs system dependencies and may require sudo privileges. The extension does not silently download a browser during activation. After installation, reopen the login page or refresh a list.
+If Playwright Chromium is missing, run **Install Playwright Chromium** from the Command Palette. This command uses `npm exec` in a VS Code terminal to run the Playwright CLI bundled with the extension and install Chromium. Install Node.js and npm on the extension host first and ensure `node` and `npm` are available in the terminal. pnpm is not required for users. On Linux, the command also installs system dependencies and may require sudo privileges. The extension does not silently download a browser during activation. After installation, reopen the login page or refresh a list.
 
 When a QR code expires, select **Refresh QR Code** on the login page to display a new code in the same place. The code is cleared after a successful login, expiration, an error, or closing the page. Opening login again returns to the existing login page. If a list reports that your session has expired, select **Scan to Log In** directly in that list. Users with an existing session can refresh or search from the welcome page.
 
@@ -34,8 +34,7 @@ When using Remote SSH or a container, check the network used by the remote host 
 ## Requirements and limitations
 
 - Desktop VS Code and Playwright Chromium are required. VS Code Remote SSH and containers are supported, but Chromium system dependencies must be installed and verified separately on each host.
-- End-to-end validation with a real Xiaohongshu account has not been completed for this version. Access to Home, Explore, search, and note details depends on current website behavior, login state, and the content visible to your account.
-- The mapping of website data to the Explore view still requires verification in a real browser. Changes to the platform's response structure may temporarily make some sections unavailable.
+- The browser installation command requires Node.js and npm on the host running the extension. For Remote SSH or containers, install them on the remote host or inside the container.
 - This extension is a community tool and is not an official Xiaohongshu product. Follow the platform's rules and use your own judgment when deciding how to use it.
 
 ## Commands
