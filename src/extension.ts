@@ -221,8 +221,8 @@ export function activate(context: vscode.ExtensionContext): void {
 		terminal.show();
 		terminal.sendText(
 			process.platform === 'linux'
-				? 'pnpm exec playwright install --with-deps chromium'
-				: 'pnpm exec playwright install chromium',
+				? 'npm exec --no -- playwright install --with-deps chromium'
+				: 'npm exec --no -- playwright install chromium',
 		);
 	});
 	registerCommand(context, 'clearSession', async () => {
